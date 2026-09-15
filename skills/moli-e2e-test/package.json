@@ -1,0 +1,14 @@
+{
+  "name": "moli-e2e-test",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "人类化网页自动化测试框架：基于 Moli 无头浏览器 + Playwright CDP，一键跑模块功能与边界用例",
+  "scripts": {
+    "test": "bash scripts/run.sh",
+    "self-test": "bash scripts/run.sh scripts/self-test.spec.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}

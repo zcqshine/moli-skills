@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Moli E2E 测试报告 · 2026-09-13T14:11:27.036Z</title>
+<style>
+  :root{ --green:#274E13; --pass:#2e7d32; --fail:#c62828; --skip:#8a8a8a; --bg:#f5f7f4; --card:#fff; --line:#e2e6df; --ink:#1f2a1a; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;line-height:1.5}
+  header{background:linear-gradient(135deg,#274E13,#3f7a1f);color:#fff;padding:28px 32px}
+  header h1{margin:0 0 6px;font-size:22px;letter-spacing:.5px}
+  header .meta{font-size:13px;opacity:.9}
+  .cards{display:flex;gap:16px;flex-wrap:wrap;padding:20px 32px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;min-width:120px;box-shadow:0 1px 3px rgba(39,78,19,.06)}
+  .card .n{font-size:26px;font-weight:700}
+  .card .l{font-size:12px;color:#66705f;margin-top:2px}
+  .card.pass .n{color:var(--pass)} .card.fail .n{color:var(--fail)} .card.rate .n{color:var(--green)}
+  main{padding:8px 32px 48px}
+  .spec{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-top:20px;overflow:hidden}
+  .spec h2{margin:0;padding:14px 18px;font-size:15px;background:#eef2ea;border-bottom:1px solid var(--line)}
+  .spec h2 .muted{font-weight:400;color:#66705f;font-size:12px;margin-left:8px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;padding:9px 14px;background:#f7f9f5;color:#55604d;font-weight:600;border-bottom:1px solid var(--line)}
+  td{padding:9px 14px;border-bottom:1px solid #f0f2ee;vertical-align:top}
+  tr.group td{background:#fafbf9;font-weight:600;color:var(--green);font-size:12px;letter-spacing:.3px}
+  td.st{width:66px} td.ms{width:74px;color:#7a8471;font-variant-numeric:tabular-nums}
+  td.dt{color:#4a5443}
+  .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;color:#fff}
+  .b-pass{background:var(--pass)} .b-fail{background:var(--fail)} .b-skip{background:var(--skip)}
+  .err{color:var(--fail);margin-bottom:6px}
+  .diag{background:#fff8f8;border:1px solid #f2d7d7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:12px}
+  .diag b{color:#8a3b3b}
+  .diag pre{margin:4px 0 0;white-space:pre-wrap;word-break:break-word;color:#5a4a4a}
+  .shot img{max-width:520px;border:1px solid var(--line);border-radius:8px;margin-top:6px;display:block}
+  footer{padding:18px 32px;color:#8a947f;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Moli E2E 网页自动化测试报告</h1>
+  <div class="meta">生成时间 2026-09-13T14:11:27.036Z · 端点 http://127.0.0.1:9222 · 目标 (页面自包含) · 拟人模式 开启 · 总耗时 33.1s</div>
+</header>
+<div class="cards">
+  <div class="card"><div class="n">8</div><div class="l">用例总数</div></div>
+  <div class="card pass"><div class="n">8</div><div class="l">通过</div></div>
+  <div class="card fail"><div class="n">0</div><div class="l">失败</div></div>
+  <div class="card"><div class="n">0</div><div class="l">跳过</div></div>
+  <div class="card rate"><div class="n">100%</div><div class="l">通过率</div></div>
+</div>
+<main>
+      <section class="spec">
+        <h2>scripts/self-test.spec.mjs <span class="muted">8/8 通过 · 33.1s</span></h2>
+        <table>
+          <thead><tr><th>状态</th><th>用例</th><th>耗时</th><th>详情</th></tr></thead>
+          <tbody><tr class="group"><td colspan="4">用户注册表单 · 功能与边界</td></tr><tr class="case passed">
+        <td class="st"><span class="badge b-pass">通过</span></td>
+        <td class="nm">空表单提交：应被前端拦截，并提示全部必填项</td>
+        <td class="ms">941ms</td>
+        <td class="dt"></td>
+      </tr><tr class="case passed">
+        <td class="st"><span class="badge b-pass">通过</span></td>
+        <td class="nm">邮箱格式非法：应被拦截并提示格式错误</td>
+        <td class="ms">4827ms</td>
+        <td class="dt"></td>
+      </tr><tr class="case passed">
+        <td class="st"><span class="badge b-pass">通过</span></td>
+        <td class="nm">手机号格式非法：应被拦截并提示格式错误</td>
+        <td class="ms">4953ms</td>
+        <td class="dt"></td>
+      </tr><tr class="case passed">
+        <td class="st"><span class="badge b-pass">通过</span></td>
+        <td class="nm">密码过短（长度边界）：应被拦截</td>
+        <td class="ms">5236ms</td>
+        <td class="dt"></td>
+      </tr><tr class="case passed">
+        <td class="st"><span class="badge b-pass">通过</span></td>
+        <td class="nm">用户名边界（2 字符 &lt; 最小 3）：应被拦截</td>
+        <td class="ms">4779ms</td>
+        <td class="dt"></td>
+      </tr><tr class="case passed">
+        <td class="st"><span class="badge b-pass">通过</span></td>
+        <td class="nm">修正非法输入后，错误提示应实时消失</td>
+        <td class="ms">1068ms</td>
+        <td class="dt"></td>
+      </tr><tr class="case passed">
+        <td class="st"><span class="badge b-pass">通过</span></td>
+        <td class="nm">特殊字符与超长输入：应作为纯文本处理、不注入、不崩溃</td>
+        <td class="ms">6144ms</td>
+        <td class="dt"></td>
+      </tr><tr class="case passed">
+        <td class="st"><span class="badge b-pass">通过</span></td>
+        <td class="nm">合法数据：应提交成功并显示结果</td>
+        <td class="ms">5047ms</td>
+        <td class="dt"></td>
+      </tr></tbody>
+        </table>
+      </section></main>
+<footer>由 moli-e2e-test skill 生成 · Moli 无头浏览器 + Playwright CDP</footer>
+</body>
+</html>
