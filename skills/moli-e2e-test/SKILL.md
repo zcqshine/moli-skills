@@ -70,6 +70,9 @@ export default function register(session) {
 `t.expect`（visible/hidden/text/value/count/url/fieldError/noFieldError/toast/blocked/ok）、
 `t.step`/`t.log`、`t.page`（裸 Playwright）、`t.isShown`（布局无关的可见性）。
 
+**涉及弹窗/抽屉/下拉等浮层交互时，勿手写坐标点击，直接引入
+`scripts/overlay-helpers.mjs`（见「关键注意」）；正式编排前先跑最小探针验证原语。**
+
 ### 4. 一键运行
 
 ```bash
@@ -105,6 +108,7 @@ moli-e2e-test/
 │   ├── run.sh                     # 一键入口
 │   ├── run.mjs                    # 用例编排 + 报告聚合
 │   ├── harness.mjs                # 拟人操作 / 断言 / 诊断
+│   ├── overlay-helpers.mjs        # Overlay DOM 级交互助手（浮层实测坑规避）
 │   ├── report.mjs                 # HTML/JSON 报告
 │   └── self-test.spec.mjs         # 环境自检（内置示例表单）
 ├── examples/login.spec.mjs        # 登录模块模板（改选择器即可用）
@@ -116,6 +120,21 @@ moli-e2e-test/
 - **Moli 布局特性**：无显式尺寸的元素（如仅含文本的 `div`）可能返回 0×0 包围盒，
   使原生 `isVisible()/click()` 误判。**用 `t.expect.*` 与 `t.isShown`**，勿用裸 `isVisible()`。
   详见 [references/ui-selectors.md](references/ui-selectors.md)。
+- **Overlay 浮层（dialog/drawer/dropdown popper/select 选项/message-box/toast）在 Moli 下几乎
+  全是 0×0**：坐标点击、`:visible` 伪类、hit-test 全部失效，拟人点击会打偏到 (0,0) 或别的元素。
+  **一律用 DOM 级交互**：直接 `import * as ov from '<skill目录>/scripts/overlay-helpers.mjs'`
+  （domClick / rowClick / domType / buttonDisabled / expectToast / hoverDropdown）。
+  hover 型 el-dropdown 打开须 `ov.hoverDropdown`（mouseenter 打在 `.el-tooltip__trigger` 上）。
+  详见 [references/ui-selectors.md](references/ui-selectors.md) 的「Overlay 实战手册」。
+- **`:has-text()` / `:text()` / `:visible` 是 Playwright 私有伪类**：只能用于 locator；
+  传进 `page.evaluate` 里的 `querySelectorAll` 会抛 `DOMException`。evaluate 场景用纯 CSS +
+  单独的文本过滤参数。
+- **首跑前先写最小探针**：新页面/新组件集，先用裸 Playwright 脚本逐个验证交互原语
+  （点击、选项、输入、toast 读取）在 Moli 下确实生效，再全量编排 spec——否则会把
+  「用例假设不成立」误判成「功能缺陷」，白跑多轮。
+- **共享 CDP 浏览器会攒残留 page**：自写探针脚本结束只 `browser.close()` 不会关 page，
+  累积若干后新导航超时假死。脚本收尾必须 `page.close()`；排障用
+  `curl -s localhost:9222/json/list` 数 targets，`/json/close/<id>` 清理。
 - **服务要常驻**：短命 shell 里 `moli serve &` 会被回收导致后续 502。
   `run.sh` 已处理；手工起服务时用 `nohup ... &`。
 - **`--layout`**：`run.sh` 已带（截图、坐标点击、PDF 需要）。

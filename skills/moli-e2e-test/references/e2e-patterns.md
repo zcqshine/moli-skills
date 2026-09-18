@@ -105,6 +105,13 @@ unpinned job silently changes engine between runs.
 | Text assertion off by whitespace | untrimmed expectation | trim both sides |
 | `isVisible()` 为 false 但元素明明显示了 | Moli 对无显式尺寸元素返回 0×0 包围盒 | 用 `t.expect.visible` / `t.isShown`（布局无关），勿用裸 `isVisible()` |
 | `click` 超时提示 element not visible | 同上，零尺寸 | 框架已自动回退 force；或改用带尺寸的元素/父容器 |
+| 浮层（dialog/drawer/dropdown popper）里的元素 `:visible` 永远匹配不到、点击打偏 | teleport 浮层在 Moli 下 0×0，坐标即 (0,0) | 用 `scripts/overlay-helpers.mjs` 的 DOM 级 `domClick/rowClick/domType/expectToast`（见 ui-selectors.md「Overlay 实战手册」） |
+| `page.evaluate: DOMException` | 把 `:has-text()` / `:text()` / `:visible` 等 Playwright 私有伪类传进了 evaluate 里的 `querySelectorAll` | evaluate 只用纯 CSS，文本过滤作为参数在 JS 里做 |
+| hover 型 el-dropdown 怎么都打不开 | `mouseenter` 打在了 `.el-dropdown` 根元素上 | 打在 `.el-tooltip__trigger` 上且 `bubbles:false`；用 `ov.hoverDropdown` |
+| 勾选框点不到（NOEL / 不可见） | el-checkbox 原生 input 是 `opacity:0`，被可见性过滤挡掉 | 点 `.el-checkbox` label 包裹层 |
+| 表格操作列点击报「hit-test intercept」（点到分页/别的元素） | 横向滚动表格区 scrollIntoView 后坐标过期 | 行内交互改 `ov.rowClick` DOM 级 |
+| 浏览器突然导航/请求超时，但服务 curl 都正常 | 共享 CDP 浏览器攒了残留 page（探针只 `browser.close()` 不关 page） | `curl -s :9222/json/list` 数 targets，逐个 `/json/close/<id>` 清理；探针脚本收尾必须 `page.close()` |
+| 首轮大面积失败，分不清功能缺陷还是用例问题 | 用例假设（选择器/交互）未经真实验证 | **探针先行**：先用最小裸 Playwright 脚本逐个验证交互原语，再全量编排 spec |
 
 ## Fit / boundary matrix
 

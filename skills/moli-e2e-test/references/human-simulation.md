@@ -28,12 +28,16 @@
 
 ## 组件层面的拟人（Element Plus / AntD）
 
-这些库的「选择」不是原生 select，需点击展开再选项：
+这些库的「选择」不是原生 select，需点击展开再选项。
+**注意：dropdown/select 选项是 teleport 浮层，Moli 下 0×0，拟人点击不生效，
+须换 `scripts/overlay-helpers.mjs` 的 DOM 级操作**（详见
+[ui-selectors.md](ui-selectors.md) 的「Overlay 实战手册」）：
 
 ```js
-// Element Plus el-select
-await t.human.click('.el-form-item:has(#status) .el-select');
-await t.human.click('.el-select-dropdown__item:has-text("启用")');
+// Element Plus el-select：触发器在页面上（有几何）可拟人；选项在 popper 里（0×0）必须 DOM 级
+await t.human.click('.el-form-item:has(#status) .el-select');        // 可能失效，推荐下面两行
+await ov.domClick(t, '.el-dialog .el-select__wrapper');              // 展开（浮层内也稳）
+await ov.domClick(t, '.el-select-dropdown__item', '启用');           // 选择
 
 // Element Plus el-date-picker：点击后再选日（或直接输入）
 await t.human.click('.el-form-item:has(#date) .el-date-editor');
@@ -45,11 +49,21 @@ await t.human.hover('.el-table__row:has-text("示例客户")');
 await t.human.click('.el-table__row:has-text("示例客户") .btn-edit');
 ```
 
+**拟人操作的适用边界（实测）**：`human.click` 依赖坐标 hit-test，只在「页内固定布局区」
+（表单、工具栏、视口内的普通按钮/链接）可靠。两类场景会静默打偏，必须改 DOM 级：
+
+- **浮层内部**（dialog/drawer/message-box 的按钮、选项）——0×0，坐标即 (0,0)；
+- **横向滚动的表格区**（列多到出滚动条的操作列）——scrollIntoView 后坐标过期，
+  实测会点到分页等覆盖元素（hit-test intercept）。用 `ov.rowClick` / `ov.domClick`。
+
 ## 反模式（不要这么做）
 
 - 用固定 `sleep` 等加载：改用 `expect.visible` / `expect.toast` / `waitForFunction`（框架内已有轮询）。
 - 用 `page.evaluate` 直接改 DOM 或赋值绕过交互：那是在测「你会不会写 JS」，不是测模块功能。
   仅当元素确实零尺寸且非业务交互时才用 force 回退。
+  **边界澄清**：overlay-helpers 的 `el.click()` / native setter+`input` 事件仍会走组件真实
+  事件链（Vue handler、v-model、校验），属于「同一交互的降级触发」，不算绕过；
+  直接给 store/props 赋值跳过事件链才算。
 - 所有用例都开拟人慢速：冒烟可选 `--no-human`；回归保留拟人以贴近真实。
 - 依赖元素顺序（`nth-child`）：换库版本就碎。
 
