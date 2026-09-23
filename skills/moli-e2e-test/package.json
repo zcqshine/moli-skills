@@ -8,6 +8,9 @@
     "test": "bash scripts/run.sh",
     "self-test": "bash scripts/run.sh scripts/self-test.spec.mjs"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "playwright": "^1.63.0"
   }

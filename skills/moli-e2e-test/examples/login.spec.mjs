@@ -2,7 +2,7 @@
  * 示例用例模板：登录模块（Vue3 + Element Plus）
  *
  * 用法（复制到你的项目里改选择器即可）：
- *   moli-e2e-test/scripts/run.sh ./login.spec.mjs --base-url http://localhost:3000
+ *   bash <skill目录>/scripts/run.sh ./e2e/specs/login.spec.mjs --base-url http://localhost:3000
  *
  * 要点：
  *   - baseURL 由 --base-url 传入，页面用相对路径 t.human.goto('/login')

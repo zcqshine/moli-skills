@@ -27,11 +27,44 @@ function parseArgs(argv) {
     if (a === '--no-human') out.flags.human = false;
     else if (a === '--list') out.flags.list = true;
     else if (a.startsWith('--')) {
-      const key = a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-      out.flags[key] = argv[++i];
+      const eq = a.indexOf('=');
+      const rawKey = eq === -1 ? a.slice(2) : a.slice(2, eq);
+      const key = rawKey.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      if (eq !== -1) {
+        out.flags[key] = a.slice(eq + 1);
+      } else {
+        // 下一个参数是另一个 flag（或以 -- 开头）时不吞它作为值
+        const next = argv[i + 1];
+        if (next !== undefined && !next.startsWith('--')) {
+          out.flags[key] = next;
+          i++;
+        } else {
+          out.flags[key] = '';
+        }
+      }
     } else out.specs.push(a);
   }
   return out;
+}
+
+const SKIP_DIRS = new Set(['node_modules', '.git', '.cache', 'dist', 'build', 'coverage']);
+
+/** 递归收集 *.spec.mjs（跳过依赖/隐藏/构建目录） */
+async function walkDir(dir, files) {
+  let entries;
+  try {
+    entries = await fsp.readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const e of entries) {
+    if (e.isDirectory()) {
+      if (e.name.startsWith('.') || SKIP_DIRS.has(e.name)) continue;
+      await walkDir(path.join(dir, e.name), files);
+    } else if (e.isFile() && /\.spec\.mjs$/.test(e.name)) {
+      files.push(path.join(dir, e.name));
+    }
+  }
 }
 
 async function discoverSpecs(inputs) {
@@ -45,14 +78,8 @@ async function discoverSpecs(inputs) {
       console.error(`[moli-e2e] 找不到: ${p}`);
       process.exit(2);
     }
-    if (st.isDirectory()) {
-      const entries = await fsp.readdir(abs, { withFileTypes: true });
-      for (const e of entries) {
-        if (e.isFile() && /\.spec\.mjs$/.test(e.name)) files.push(path.join(abs, e.name));
-      }
-    } else {
-      files.push(abs);
-    }
+    if (st.isDirectory()) await walkDir(abs, files);
+    else files.push(abs);
   }
   return files;
 }
@@ -65,14 +92,24 @@ async function main() {
   const cfg = {
     ...defaultConfig,
     e2eDir,
-    baseURL: flags.baseUrl ?? defaultConfig.baseURL,
-    endpoint: flags.endpoint ?? defaultConfig.endpoint,
-    reportDir: flags.reportDir ? path.resolve(flags.reportDir) : path.join(e2eDir, 'reports'),
-    screenshotDir: flags.shotsDir ? path.resolve(flags.shotsDir) : path.join(e2eDir, 'screenshots'),
+    baseURL: flags.baseUrl || defaultConfig.baseURL,
+    endpoint: flags.endpoint || defaultConfig.endpoint,
+    // 显式 flag > 由 --e2e-dir 派生 > 环境变量/默认（保持一致，不再压掉 REPORT_DIR/SHOTS_DIR）
+    reportDir: flags.reportDir
+      ? path.resolve(flags.reportDir)
+      : flags.e2eDir
+        ? path.join(e2eDir, 'reports')
+        : defaultConfig.reportDir,
+    screenshotDir: flags.shotsDir
+      ? path.resolve(flags.shotsDir)
+      : flags.e2eDir
+        ? path.join(e2eDir, 'screenshots')
+        : defaultConfig.screenshotDir,
     human: flags.human === false ? false : defaultConfig.human,
-    screenshots: flags.shots ?? defaultConfig.screenshots,
+    screenshots: flags.shots || defaultConfig.screenshots,
     timeout: flags.timeout ? Number(flags.timeout) : defaultConfig.timeout,
   };
+  if (!Number.isFinite(cfg.timeout) || cfg.timeout <= 0) cfg.timeout = defaultConfig.timeout;
 
   let specFiles;
   if (specInputs.length) {
@@ -109,47 +146,67 @@ async function main() {
   const specSummaries = [];
   const t0 = Date.now();
 
-  for (const file of specFiles) {
-    const rel = path.relative(process.cwd(), file);
-    console.log(`\n══════ 用例文件: ${rel} ══════`);
-    let mod;
-    try {
-      mod = await import(pathToFileURL(file).href);
-    } catch (e) {
-      console.error(`[moli-e2e] 加载失败: ${rel}\n${e.stack}`);
-      specSummaries.push({
-        spec: rel,
-        total: 1,
-        passed: 0,
-        failed: 1,
-        skipped: 0,
-        durationMs: 0,
-        results: [
-          { group: '加载', name: '加载用例文件', status: 'failed', ms: 0, error: { message: String(e.message || e) }, shot: null, diag: null },
-        ],
-      });
-      continue;
-    }
-    const register = mod.default || mod.register;
-    if (typeof register !== 'function') {
-      console.error(`[moli-e2e] ${rel} 未 default 导出注册函数`);
-      continue;
-    }
+  const failedSummary = (rel, where, msg) => ({
+    spec: rel,
+    total: 1,
+    passed: 0,
+    failed: 1,
+    skipped: 0,
+    durationMs: 0,
+    results: [
+      { group: where, name: `执行用例文件`, status: 'failed', ms: 0, error: { message: String(msg) }, shot: null, diag: null, steps: [] },
+    ],
+  });
 
-    const session = await createSession(cfg, browser);
-    browser = session.browser;
-    await register(session);
-    const s = await session.run();
-    await session.close();
-    s.spec = rel;
-    specSummaries.push(s);
-  }
+  try {
+    for (const file of specFiles) {
+      const rel = path.relative(process.cwd(), file);
+      console.log(`\n══════ 用例文件: ${rel} ══════`);
+      let mod;
+      try {
+        mod = await import(pathToFileURL(file).href);
+      } catch (e) {
+        console.error(`[moli-e2e] 加载失败: ${rel}\n${e && e.stack ? e.stack : e}`);
+        specSummaries.push(failedSummary(rel, '加载', (e && e.message) || e));
+        continue;
+      }
+      const register = mod.default || mod.register;
+      if (typeof register !== 'function') {
+        console.error(`[moli-e2e] ${rel} 未 default 导出注册函数`);
+        specSummaries.push(failedSummary(rel, '注册', 'spec 未 default 导出注册函数'));
+        continue;
+      }
 
-  if (browser) {
-    try {
-      await browser.close();
-    } catch {
-      /* ignore */
+      // 单个 spec 的注册/执行异常必须隔离：否则后续不跑、报告不生成、浏览器不关
+      let session = null;
+      try {
+        session = await createSession(cfg, browser);
+        browser = session.browser;
+        await register(session);
+        const s = await session.run();
+        await session.close();
+        session = null;
+        s.spec = rel;
+        specSummaries.push(s);
+      } catch (e) {
+        console.error(`[moli-e2e] 运行异常: ${rel}\n${e && e.stack ? e.stack : e}`);
+        if (session) {
+          try {
+            await session.close();
+          } catch {
+            /* ignore */
+          }
+        }
+        specSummaries.push(failedSummary(rel, '运行', (e && e.message) || e));
+      }
+    }
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch {
+        /* ignore */
+      }
     }
   }
 

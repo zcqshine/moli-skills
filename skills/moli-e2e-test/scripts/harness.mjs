@@ -50,7 +50,7 @@ if (!PW) {
   console.error(`[moli-e2e] 或在 ${SKILL_DIR} 下执行：PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install`);
   process.exit(2);
 }
-const { chromium } = require('playwright');
+const { chromium } = require(PW); // 用 resolvePlaywright() 解析出的路径，而非 bare specifier
 
 /* ------------------------------------------------------------------ *
  * 工具
@@ -72,16 +72,10 @@ const ERROR_SEL =
  * 不依赖包围盒大小（规避 Moli 零尺寸布局特性）。元素不存在则返回 false。
  */
 async function isShown(loc) {
+  // 纯手写祖先链判定：不依赖 checkVisibility（其选项可能被引擎忽略），确定性更好
   return loc
     .evaluate((el) => {
       if (!el || el.nodeType !== 1) return false;
-      if (typeof el.checkVisibility === 'function') {
-        try {
-          return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
-        } catch {
-          /* 回退到手动遍历 */
-        }
-      }
       let node = el;
       while (node && node.nodeType === 1) {
         const cs = getComputedStyle(node);
@@ -94,14 +88,18 @@ async function isShown(loc) {
     .catch(() => false);
 }
 
-/** 轮询等待元素处于显示/隐藏状态 */
+/** 轮询等待元素处于显示/隐藏状态（多匹配时：want=true 只要有一个显示即可） */
 async function waitShown(loc, want, timeout) {
   const deadline = Date.now() + timeout;
   for (;;) {
     const count = await loc.count().catch(() => 0);
     if (count > 0) {
-      const shown = await isShown(loc.first());
-      if (shown === want) return true;
+      const n = Math.min(count, 20);
+      let anyShown = false;
+      for (let i = 0; i < n; i++) {
+        if (await isShown(loc.nth(i))) { anyShown = true; break; }
+      }
+      if (anyShown === want) return true;
     } else if (!want) {
       return true; // 元素不存在也算「隐藏」
     }
@@ -194,11 +192,12 @@ export async function createSession(userCfg = {}, sharedBrowser = null) {
 
     async screenshot(page, name) {
       const dir = cfg.screenshotDir;
-      await fsp.mkdir(dir, { recursive: true });
       const file = path.join(dir, `${sanitize(name)}-${Date.now()}.png`);
       try {
+        await fsp.mkdir(dir, { recursive: true }); // mkdir 纳入 try：承诺「失败返回 null」
         await page.screenshot({ path: file, fullPage: true });
-        return file;
+        // 返回相对 e2eDir 的路径，报告 JSON 里不泄漏机器绝对路径
+        return cfg.e2eDir ? path.relative(cfg.e2eDir, file) : file;
       } catch {
         return null;
       }
@@ -432,41 +431,65 @@ function buildContext(session, page) {
       if (!(await waitShown(loc, false, cfg.timeout)))
         throw new Error(msg || `预期元素隐藏，但一直可见: ${desc(target)}`);
     },
+    /** 文本断言（轮询到匹配或超时） */
     async text(target, expected, { exact = true } = {}) {
       const loc = asLocator(page, target).first();
-      await loc.waitFor({ state: 'attached', timeout: cfg.timeout }).catch(() => {});
-      const actual = norm(await loc.textContent().catch(() => ''));
-      const good =
-        expected instanceof RegExp
-          ? expected.test(actual)
-          : exact
-            ? actual === norm(expected)
-            : actual.includes(norm(expected));
-      if (!good)
-        throw new Error(
-          `文本不匹配: 实际="${actual}" 期望${expected instanceof RegExp ? '匹配' : exact ? '==' : '包含'}"${expected}"`,
-        );
-      return actual;
+      const match = (actual) =>
+        expected instanceof RegExp ? expected.test(actual) : exact ? actual === norm(expected) : actual.includes(norm(expected));
+      const deadline = Date.now() + cfg.timeout;
+      let actual = '';
+      for (;;) {
+        await loc.waitFor({ state: 'attached', timeout: 1000 }).catch(() => {});
+        actual = norm(await loc.textContent().catch(() => ''));
+        if (match(actual)) return actual;
+        if (Date.now() >= deadline) break;
+        await sleep(120);
+      }
+      throw new Error(
+        `文本不匹配: 实际="${actual}" 期望${expected instanceof RegExp ? '匹配' : exact ? '==' : '包含'}"${expected}"`,
+      );
     },
     async contains(target, expected) {
       return expect.text(target, expected, { exact: false });
     },
+    /** 值断言（轮询） */
     async value(target, expected) {
       const loc = asLocator(page, target).first();
-      const actual = await loc.inputValue().catch(async () => norm(await loc.textContent().catch(() => '')));
-      if (norm(actual) !== norm(expected)) throw new Error(`值不匹配: 实际="${actual}" 期望="${expected}"`);
-      return actual;
+      const deadline = Date.now() + cfg.timeout;
+      let actual = '';
+      for (;;) {
+        actual = await loc.inputValue().catch(async () => norm(await loc.textContent().catch(() => '')));
+        if (norm(actual) === norm(expected)) return actual;
+        if (Date.now() >= deadline) break;
+        await sleep(120);
+      }
+      throw new Error(`值不匹配: 实际="${actual}" 期望="${expected}"`);
     },
+    /** 数量断言（轮询） */
     async count(target, n) {
-      const c = await asLocator(page, target).count();
-      if (c !== n) throw new Error(`数量不匹配: 实际=${c} 期望=${n} (${desc(target)})`);
-      return c;
+      const loc = asLocator(page, target);
+      const deadline = Date.now() + cfg.timeout;
+      let c = await loc.count().catch(() => 0);
+      for (;;) {
+        if (c === n) return c;
+        if (Date.now() >= deadline) break;
+        await sleep(120);
+        c = await loc.count().catch(() => 0);
+      }
+      throw new Error(`数量不匹配: 实际=${c} 期望=${n} (${desc(target)})`);
     },
+    /** URL 断言（轮询，兼容 SPA 异步路由） */
     async url(pattern) {
-      const u = page.url();
-      const good = pattern instanceof RegExp ? pattern.test(u) : u.includes(String(pattern));
-      if (!good) throw new Error(`URL 不匹配: 实际="${u}" 期望~${pattern}`);
-      return u;
+      const deadline = Date.now() + cfg.timeout;
+      let u = page.url();
+      for (;;) {
+        u = page.url();
+        const good = pattern instanceof RegExp ? pattern.test(u) : u.includes(String(pattern));
+        if (good) return u;
+        if (Date.now() >= deadline) break;
+        await sleep(120);
+      }
+      throw new Error(`URL 不匹配: 实际="${u}" 期望~${pattern}`);
     },
 
     /** 断言某字段出现前端校验错误（可选断言文案） */

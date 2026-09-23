@@ -7,7 +7,7 @@ node_modules/
 # 日志与临时产物
 *.log
 
-# 测试产物（e2e 运行产物：报告与截图忽略，保留 specs 用例）
+# 自检产物（仅当在 skill 目录内跑内置自检时生成；用例目录 specs/ 保留入库）
 skills/moli-e2e-test/e2e/reports/*
 !skills/moli-e2e-test/e2e/reports/.gitkeep
 skills/moli-e2e-test/e2e/screenshots/*

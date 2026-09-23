@@ -190,20 +190,28 @@ await browser.close();
 
 ## 快速开始：跑一次网页 E2E 测试
 
-`moli-e2e-test` 自带一键运行器，会自动：解析 Node≥18 → 确保 Moli CDP 服务在跑 → 按需装 playwright（跳过浏览器下载）→ 跑用例 → 出 HTML 报告 → 以退出码反映失败。
+`moli-e2e-test` 自带一键运行器，会自动：解析 Node≥20 → 确保 Moli CDP 服务在跑 → 按需装 playwright（跳过浏览器下载）→ 跑用例 → 出 HTML 报告 → 以退出码反映失败。
 
-### 先跑内置自检（不需要任何外部服务）
+> **目录约定**：所有 e2e 产物统一收在**被测项目根**的 `e2e/` 下——`specs/` 用例、`reports/` 报告、`screenshots/` 截图，不在项目根散落。
+
+### 1. 在被测项目根建骨架
 
 ```bash
-cd skills/moli-e2e-test
-bash scripts/run.sh
+bash skills/moli-e2e-test/scripts/run.sh init
+# 生成 e2e/{specs,reports,screenshots}
 ```
 
-输出 8 条用例结果，报告落在 `moli-reports/report.html`。
+### 2. 先跑内置自检（不需要任何外部服务）
 
-### 跑你自己模块的用例
+```bash
+bash skills/moli-e2e-test/scripts/run.sh skills/moli-e2e-test/scripts/self-test.spec.mjs
+```
 
-写一个 spec（只写用例，框架从 skill 引入）：
+输出 8 条用例结果，报告落在当前目录的 `e2e/reports/report.html`。
+
+### 3. 跑你自己模块的用例
+
+写一个 spec 放到 `e2e/specs/`（只写用例，框架从 skill 引入）：
 
 ```js
 export default function register(session) {
@@ -228,21 +236,21 @@ export default function register(session) {
 
 ```bash
 # 跑单个 spec
-bash scripts/run.sh ./e2e/crm-customer.spec.mjs --base-url http://localhost:3000
+bash skills/moli-e2e-test/scripts/run.sh ./e2e/specs/crm-customer.spec.mjs --base-url http://localhost:3000
 
-# 跑整个目录，关拟人提速（适合回归）
-bash scripts/run.sh ./e2e --base-url http://localhost:3000 --no-human --report-dir ./artifacts
+# 跑整个目录，关拟人提速（适合回归；产物默认落在 e2e/reports、e2e/screenshots）
+bash skills/moli-e2e-test/scripts/run.sh ./e2e/specs --base-url http://localhost:3000 --no-human
 ```
 
 `t` 提供的能力：
 
-- `t.human` — `type` / `click` / `hover` / `select` / `check` / `press` / `scroll`，拟人化（逐字输入、鼠标轨迹、滚动渐进）
-- `t.expect` — `visible` / `hidden` / `text` / `value` / `count` / `url` / `fieldError` / `noFieldError` / `toast` / `blocked` / `ok`
+- `t.human` — `goto` / `type` / `click` / `hover` / `select` / `check` / `uncheck` / `clear` / `press` / `scroll`，拟人化（逐字输入、鼠标轨迹、滚动渐进）
+- `t.expect` — `visible` / `hidden` / `text` / `contains` / `value` / `count` / `url` / `fieldError` / `noFieldError` / `toast` / `blocked` / `ok`（断言内部轮询到超时）
 - `t.step` / `t.log` — 分步与日志
 - `t.page` — 裸 Playwright 页面对象，能力不够时直接下钻
 - `t.isShown` — 布局无关的可见性判定（见[已知坑](#已知坑)）
 
-常用参数：`--base-url` `--endpoint` `--report-dir` `--no-human` `--shots always|on-failure|off` `--timeout` `--list`
+常用参数：`--base-url` `--endpoint` `--e2e-dir` `--report-dir` `--shots-dir` `--no-human` `--shots always|on-failure|off` `--timeout` `--list`
 
 ---
 
@@ -259,7 +267,9 @@ skill 就是目录 + `SKILL.md`，复制到 Agent 的 skills 路径即可：
 cp -R skills/* ~/.workbuddy/skills/
 ```
 
-`skills/*/agents/openai.yaml` 是给 OpenAI Codex 的 agent 定义，其它框架忽略即可。
+前三个上游 skill（`moli-webfetch` / `moli-websearch` / `moli-cdp-server`）附带
+`skills/*/agents/openai.yaml`（给 OpenAI Codex 的 agent 定义）；自研的 `moli-e2e-test`
+不含该文件。其它框架忽略即可。
 
 ---
 
@@ -269,19 +279,20 @@ cp -R skills/* ~/.workbuddy/skills/
 用户名长度边界、修正后错误消失、特殊字符与超长、XSS 不注入）：
 
 ```
-PASS | 空表单提交应被拦截
-PASS | 邮箱格式非法应被拦截
-PASS | 手机号格式非法应被拦截
-PASS | 密码过短应被拦截
-PASS | 用户名长度边界
-PASS | 修正非法输入后错误提示应实时消失
-PASS | 特殊字符与超长输入：不应注入脚本、不应崩溃
-PASS | 合法数据：应提交成功并显示结果
-汇总: 8/8 通过 · 32.6s
+▶ 用户注册表单 · 功能与边界 › 空表单提交：应被前端拦截并提示全部必填项
+  ✅ PASS  (1234ms)
+▶ 用户注册表单 · 功能与边界 › 邮箱格式非法：应被拦截并提示格式错误
+  ✅ PASS  (5175ms)
+▶ 用户注册表单 · 功能与边界 › 手机号格式非法：应被拦截并提示格式错误
+  ✅ PASS  (4899ms)
+  ...（其余 5 条同样 PASS）
+══════ 汇总 ══════
+用例 8 · 通过 8 · 失败 0 · 跳过 0 · 耗时 35.1s
+报告: <项目>/e2e/reports/report.html
 ```
 
-`moli serve --layout` + Playwright `connectOverCDP` 全绿，报告见
-[`skills/moli-e2e-test/moli-reports/report.html`](skills/moli-e2e-test/)。
+`moli serve --layout` + Playwright `connectOverCDP` 全绿。跑完直接打开
+`e2e/reports/report.html` —— 汇总卡 + 每个用例明细 + 失败截图（报告自包含 base64，可归档分享）。
 
 ---
 

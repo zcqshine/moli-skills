@@ -117,9 +117,16 @@ export async function domType(t, sel, value, { timeout = TIMEOUT } = {}) {
       return true
     }
     const el = [...document.querySelectorAll(s)].filter(shown)[0]
-    const setter = Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set
-    setter.call(el, v)
+    if (!el) throw new Error('domType 目标不存在或不可见: ' + s)
+    const proto = el.constructor && el.constructor.prototype
+    const desc = proto ? Object.getOwnPropertyDescriptor(proto, 'value') : null
+    if (desc && desc.set) {
+      desc.set.call(el, v) // 受控组件（v-model 等）需 native setter 才能感知
+    } else {
+      el.value = v // 回退：contenteditable / 自定义元素等
+    }
     el.dispatchEvent(new Event('input', { bubbles: true }))
+    el.dispatchEvent(new Event('change', { bubbles: true }))
   }, [sel, value])
 }
 
@@ -141,14 +148,22 @@ export async function buttonDisabled(t, sel, text = null) {
   }, [sel, text])
 }
 
-/** toast 断言：轮询 .el-message/.el-notification 的 textContent（toast 也是 teleport 浮层） */
-export async function expectToast(t, pattern, { timeout = TIMEOUT, sel = '.el-message, .el-notification' } = {}) {
+/** toast 断言：轮询常见提示条（含 message-box / role=alert）的 textContent；pattern 支持字符串或正则 */
+export async function expectToast(
+  t,
+  pattern,
+  {
+    timeout = TIMEOUT,
+    sel = '.el-message, .el-message-box, .el-notification, .ant-message-notice, .ant-message, .van-toast, [role="alert"]',
+  } = {},
+) {
+  const match = (x) => (pattern instanceof RegExp ? pattern.test(x) : x.includes(String(pattern)))
   const deadline = Date.now() + timeout
   for (;;) {
     const texts = await t.page.evaluate((s) => {
       return [...document.querySelectorAll(s)].map((m) => m.textContent.replace(/\s+/g, ' ').trim())
     }, sel)
-    const hit = texts.find((x) => pattern.test(x))
+    const hit = texts.find(match)
     if (hit) return hit
     if (Date.now() >= deadline) throw new Error(`toast 未匹配 ${pattern}，实际: ${JSON.stringify(texts)}`)
     await t.page.waitForTimeout(200)

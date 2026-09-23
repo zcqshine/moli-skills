@@ -8,10 +8,11 @@ import path from 'node:path';
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-async function imgTag(file) {
+async function imgTag(file, baseDir) {
   if (!file) return '';
+  const abs = path.isAbsolute(file) ? file : path.resolve(baseDir || process.cwd(), file);
   try {
-    const buf = await fsp.readFile(file);
+    const buf = await fsp.readFile(abs);
     return `<a class="shot" href="#" onclick="return false"><img src="data:image/png;base64,${buf.toString(
       'base64',
     )}" alt="screenshot"/></a>`;
@@ -57,10 +58,11 @@ export async function writeReport(summary, cfg = {}) {
     failed: summary.failed || 0,
     skipped: summary.skipped || 0,
   };
-  const passRate = totals.total - totals.skipped > 0
-    ? Math.round((totals.passed / (totals.total - totals.skipped)) * 100)
-    : 100;
+  // 全部跳过时通过率无意义，显示 "-" 而非 100%（避免「其实一条没跑」被误读为环境已验证）
+  const execTotal = totals.total - (totals.skipped || 0);
+  const passRate = execTotal > 0 ? Math.round((totals.passed / execTotal) * 100) + '%' : '-';
   const durSec = ((summary.durationMs || 0) / 1000).toFixed(1);
+  const shotBase = cfg.e2eDir || cfg.reportDir;
 
   const specSections = [];
   for (const spec of summary.specs || []) {
@@ -74,7 +76,7 @@ export async function writeReport(summary, cfg = {}) {
       const detail = [];
       if (r.error?.message) detail.push(`<div class="err">${esc(r.error.message)}</div>`);
       if (r.diag) detail.push(diagBlock(r.diag));
-      if (r.shot) detail.push(await imgTag(r.shot));
+      if (r.shot) detail.push(await imgTag(r.shot, shotBase));
       rows.push(`<tr class="case ${r.status}">
         <td class="st">${badge(r.status)}</td>
         <td class="nm">${esc(r.name)}</td>
@@ -142,7 +144,7 @@ export async function writeReport(summary, cfg = {}) {
   <div class="card pass"><div class="n">${totals.passed}</div><div class="l">通过</div></div>
   <div class="card fail"><div class="n">${totals.failed}</div><div class="l">失败</div></div>
   <div class="card"><div class="n">${totals.skipped || 0}</div><div class="l">跳过</div></div>
-  <div class="card rate"><div class="n">${passRate}%</div><div class="l">通过率</div></div>
+  <div class="card rate"><div class="n">${passRate}</div><div class="l">通过率</div></div>
 </div>
 <main>${specSections.join('')}</main>
 <footer>由 moli-e2e-test skill 生成 · Moli 无头浏览器 + Playwright CDP</footer>

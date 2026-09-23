@@ -93,10 +93,10 @@ export default function register(session) {
 ## 6. 运行与收敛
 
 ```bash
-moli-e2e-test/scripts/run.sh ./e2e/crm-customer.spec.mjs --base-url http://localhost:3000
+bash <skill目录>/scripts/run.sh ./e2e/specs/crm-customer.spec.mjs --base-url http://localhost:3000
 ```
 
-读 `report.html`：
+读 `e2e/reports/report.html`：
 - **失败**：看截图 + 控制台错误 + 失败请求定位是「功能缺陷」还是「用例假设过期」
 - **通过**：检查是否真覆盖了边界；只有一个正向用例不算覆盖
 - 把回归点补成用例，形成可重复执行的资产

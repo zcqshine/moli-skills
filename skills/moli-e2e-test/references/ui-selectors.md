@@ -71,7 +71,8 @@ await ov.domClick(t, '.el-dialog .el-select__wrapper')       // 展开
 await ov.domClick(t, '.el-select-dropdown__item', '选项文本') // 选择
 // 浮层内输入（v-model 可感知）与禁用态断言
 await ov.domType(t, '.el-dialog textarea', '备注内容')
-await t.expect.ok((await ov.buttonDisabled(t, '.el-dialog button', '提交')) === false)
+// 注意 buttonDisabled 在元素不存在时返回 null，用 !== true 判定「可用」
+await t.expect.ok((await ov.buttonDisabled(t, '.el-dialog button', '提交')) !== true, '提交按钮应可用')
 // toast（也是 teleport 浮层）与出现/消失轮询
 await ov.expectToast(t, /成功/)
 await ov.waitForGone(t, '.el-drawer')

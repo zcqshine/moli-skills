@@ -1,6 +1,6 @@
 ---
 name: moli-e2e-test
-description: 用 Moli 无头浏览器模拟真人操作来测试网页模块：拟人用例覆盖核心功能、前端校验拦截非法输入、边界场景，一键运行并产出 HTML 报告。适用于网页/E2E/端到端/功能/回归测试、表单校验、非法/边界输入验证、UI 操作验证、减少人工点测——即使没有点名 Moli。
+description: 用 Moli 无头浏览器做网页 E2E 自动化测试：拟人操作覆盖功能、前端校验拦截非法/边界输入、弹窗抽屉下拉浮层交互，一键运行产出 HTML 报告。适用于网页/E2E/端到端/功能/回归测试、表单校验、非法与边界输入验证、UI 交互验证。
 ---
 
 # 用 Moli 做网页自动化测试
@@ -9,7 +9,14 @@ description: 用 Moli 无头浏览器模拟真人操作来测试网页模块：�
 真实页面，用拟人操作模拟真人点击/输入，验证模块功能与前端校验，一键产出报告。
 
 **核心事实**：Moli 替代的是浏览器引擎，不是测试框架。Playwright 照常用，只把 Chromium
-换成 Moli 的 CDP 端点——省内存、可无 GPU、适合 CI 小机器。
+换成 Moli 的 CDP 端点——省内存、可无 GPU、适合 CI 小机器。即使调用方没有点名 Moli 也适用。
+
+## 前置条件
+
+- **Node.js ≥ 20**（`playwright` 1.63 的 `engines` 要求；`run.sh` 会自动挑选可用版本）。
+- **`moli`**：缺失时 `run.sh` 会自动安装（默认锚定版本 `v1.1.9`，可用环境变量 `MOLI_VERSION=latest`
+  或指定 tag 覆盖；也可传 `MOLI_INSTALLER_SHA256` 校验安装脚本）。
+- **playwright**：首次运行会 `npm install playwright`（跳过浏览器下载——Moli 即浏览器），需要网络。
 
 ## 何时用 
 
@@ -28,7 +35,7 @@ description: 用 Moli 无头浏览器模拟真人操作来测试网页模块：�
 `moli-reports/`）。首次使用先在被测项目根执行脚手架：
 
 ```bash
-# 在被测项目根目录执行，自动生成 e2e/ 骨架
+# 在被测项目根目录执行，自动生成 e2e/ 骨架（目录名可用 --e2e-dir 指定）
 bash <skill目录>/scripts/run.sh init
 ```
 
@@ -37,7 +44,7 @@ bash <skill目录>/scripts/run.sh init
 ```
 <被测项目>/
 └── e2e/
-    ├── specs/        用例（*.spec.mjs）        ← 你的测试脚本/用例放这里
+    ├── specs/        用例（*.spec.mjs）        ← 你的测试脚本/用例放这里（init 放一份 README 说明）
     ├── reports/      测试报告（report.html / report.json）
     └── screenshots/  截图（失败/全量，依 --shots）
 ```
@@ -45,6 +52,7 @@ bash <skill目录>/scripts/run.sh init
 - 报告默认落在 `e2e/reports/`、截图默认落在 `e2e/screenshots/`；可用 `--e2e-dir` 整体迁移，
   或分别用 `--report-dir` / `--shots-dir` 单独覆盖。
 - `e2e/reports/` 与 `e2e/screenshots/` 是运行产物，建议写进项目 `.gitignore`（保留 `e2e/specs/`）。
+- 请在**被测项目根**运行 `run.sh`；在子目录运行会提示产物错位风险。
 
 ## 工作流
 
@@ -90,32 +98,36 @@ export default function register(session) {
 }
 ```
 
-`t` 提供：`t.human`（type/click/hover/select/check/press/scroll，拟人）、
-`t.expect`（visible/hidden/text/value/count/url/fieldError/noFieldError/toast/blocked/ok）、
-`t.step`/`t.log`、`t.page`（裸 Playwright）、`t.isShown`（布局无关的可见性）。
+`t` 提供：`t.human`（goto/type/click/hover/select/check/uncheck/clear/press/scroll/scrollTo，拟人）、
+`t.expect`（visible/hidden/text/contains/value/count/url/fieldError/noFieldError/toast/blocked/ok/fail，
+断言内部已轮询到超时）、`t.step`/`t.log`、`t.page`（裸 Playwright）、`t.isShown`（布局无关的可见性）、
+`t.screenshot(name)`；`session.baseURL` 可直接读目标地址（等价 `session.cfg.baseURL`）。
 
 **涉及弹窗/抽屉/下拉等浮层交互时，勿手写坐标点击，直接引入
 `scripts/overlay-helpers.mjs`（见「关键注意」）；正式编排前先跑最小探针验证原语。**
 
 ### 4. 一键运行
 
+首次使用先 `init` 建骨架（见「目录约定」）。之后：
+
 ```bash
-# 在被测项目根先建骨架（仅首次）
-bash <skill目录>/scripts/run.sh init
+# 跑内置自检（无需任何外部服务，验证环境；显式指定最稳妥）
+bash <skill目录>/scripts/run.sh <skill目录>/scripts/self-test.spec.mjs
 
-# 跑内置自检（无需任何外部服务，验证环境）
-bash <skill目录>/scripts/run.sh
-
-# 跑你的用例（建议放在 e2e/specs/）
+# 跑你的用例（放在 e2e/specs/）
 bash <skill目录>/scripts/run.sh ./e2e/specs/crm-customer.spec.mjs --base-url http://localhost:3000
 
 # 整个目录 + 回归提速（产物默认落在 e2e/reports、e2e/screenshots）
 bash <skill目录>/scripts/run.sh ./e2e/specs --base-url http://localhost:3000 --no-human
 ```
 
-`run.sh` 会自动：解析 Node≥18 → 确保 Moli CDP 服务（`:9222`）→ 按需安装 playwright →
-运行用例 → 生成 HTML 报告 → 以非零退出码反映失败（可直接进 CI）。无参数时若 `e2e/specs/`
-下有用例会自动运行它们，否则跑内置自检。
+`run.sh` 会自动：解析 Node≥20 → 确保 Moli CDP 服务（`:9222`）→ 按需安装 playwright →
+运行用例 → 生成 HTML 报告 → 以非零退出码反映失败（可直接进 CI）。
+
+- **无参数**：若 `e2e/specs/` 下有用例就跑它们，否则跑内置自检。
+- **给目录**（如 `./e2e` 或 `./e2e/specs`）：递归收集目录下所有 `*.spec.mjs`（跳过
+  `node_modules` 等），无匹配则报错退出。
+- 报告与截图的默认目录永远在被测项目的 `e2e/` 下。
 
 常用参数：`--base-url` `--endpoint` `--e2e-dir` `--report-dir` `--shots-dir`
 `--no-human`（关拟人提速）`--shots always|on-failure|off` `--timeout` `--list`。
@@ -156,7 +168,7 @@ moli-e2e-test/
   **一律用 DOM 级交互**：直接 `import * as ov from '<skill目录>/scripts/overlay-helpers.mjs'`
   （domClick / rowClick / domType / buttonDisabled / expectToast / hoverDropdown）。
   hover 型 el-dropdown 打开须 `ov.hoverDropdown`（mouseenter 打在 `.el-tooltip__trigger` 上）。
-  详见 [references/ui-selectors.md](references/ui-selectors.md) 的「Overlay 实战手册」。
+  同文件的「Overlay 实战手册」小节有完整范例。
 - **`:has-text()` / `:text()` / `:visible` 是 Playwright 私有伪类**：只能用于 locator；
   传进 `page.evaluate` 里的 `querySelectorAll` 会抛 `DOMException`。evaluate 场景用纯 CSS +
   单独的文本过滤参数。
@@ -168,8 +180,9 @@ moli-e2e-test/
   `curl -s localhost:9222/json/list` 数 targets，`/json/close/<id>` 清理。
 - **服务要常驻**：短命 shell 里 `moli serve &` 会被回收导致后续 502。
   `run.sh` 已处理；手工起服务时用 `nohup ... &`。
-- **`--layout`**：`run.sh` 已带（截图、坐标点击、PDF 需要）。
-- **别用固定 `sleep`**：等元素或条件（框架 `expect` 已内置轮询）。
+- **`--layout`**：截图、坐标点击、PDF 需要。`run.sh` 仅在**自己启动服务**时带上；若你已手工
+  `moli serve`（不带 `--layout`），须自行加 `--layout` 重启，否则截图/坐标点击会静默失效。
+- **别用固定 `sleep`**：等待交给 `t.expect.*` 的轮询（已内置）。
 - **文案断言归一化空白**：框架已做 trim+折叠空格；自写断言也要。
 
 更多排障见 [references/e2e-patterns.md](references/e2e-patterns.md)。

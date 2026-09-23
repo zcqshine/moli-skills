@@ -70,27 +70,29 @@ export default function register(session) {
 
 ## CI setup
 
-一键脚本已封装全部前置步骤（探测 Node≥18、起 Moli 服务、按需装 playwright、跑用例、出报告、非零退出码）：
+一键脚本已封装全部前置步骤（探测 Node≥20、起 Moli 服务、按需装 playwright、跑用例、出报告、非零退出码）：
 
 ```bash
 # 回归（快）：关拟人
-/path/to/moli-e2e-test/scripts/run.sh ./e2e --base-url "$E2E_BASE_URL" --no-human \
-  --report-dir ./artifacts/moli-e2e
+bash /path/to/moli-e2e-test/scripts/run.sh ./e2e/specs --base-url "$E2E_BASE_URL" --no-human
 [ $? -eq 0 ] || exit 1
 ```
+
+> 产物默认落在被测项目根的 `e2e/reports` 与 `e2e/screenshots`，无需再传 `--report-dir`。
 
 内部等价于：
 
 ```bash
-moli --version                                            # fail fast
-moli serve --layout &                                     # 常驻服务（短命 shell 里勿用裸 &）
+moli --version                                              # fail fast
+nohup moli serve --layout --port 9222 >/tmp/moli.log 2>&1 &  # 常驻（短命 shell 里勿用裸 &）
 until curl -sf http://127.0.0.1:9222/json/version; do sleep 0.5; done
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install playwright # 不下载浏览器，Moli 即浏览器
-bash scripts/run.sh ./e2e --base-url ...                  # 跑用例
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install playwright   # 不下载浏览器，Moli 即浏览器
+bash scripts/run.sh ./e2e/specs --base-url ...              # 跑用例
 ```
 
-Pin the Moli version in CI. The installer always pulls `latest`, so an
-unpinned job silently changes engine between runs.
+**在 CI 里锁定 Moli 版本**：`run.sh` 默认锚定 `MOLI_VERSION`（当前 `v1.1.9`），
+安装脚本先下载到临时文件再执行；可传 `MOLI_INSTALLER_SHA256` 校验，或设
+`MOLI_INSTALL_STRICT=1` 强制要求校验。
 
 ## Troubleshooting
 
