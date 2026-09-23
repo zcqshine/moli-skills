@@ -3,8 +3,12 @@
  *
  * 用法：
  *   node run.mjs [spec.mjs | 目录 ...] [--base-url URL] [--endpoint URL]
- *                [--report-dir DIR] [--no-human] [--shots always|on-failure|off]
+ *                [--e2e-dir DIR] [--report-dir DIR] [--shots-dir DIR]
+ *                [--no-human] [--shots always|on-failure|off]
  *                [--timeout MS] [--list]
+ *
+ * 产物默认收在项目的 e2e/ 下：e2e/reports（报告）、e2e/screenshots（截图）。
+ * 用例建议放在 e2e/specs/；无参数且 e2e/specs 下有用例时自动运行它们。
  *
  * 通常由 scripts/run.sh 调用（它负责确保 Moli 服务与依赖就绪）。
  * spec 文件需 default 导出一个注册函数：export default (session) => { ... }
@@ -57,19 +61,36 @@ async function discoverSpecs(inputs) {
 async function main() {
   const { specs: specInputs, flags } = parseArgs(process.argv.slice(2));
 
+  const e2eDir = flags.e2eDir ? path.resolve(flags.e2eDir) : defaultConfig.e2eDir;
   const cfg = {
     ...defaultConfig,
+    e2eDir,
     baseURL: flags.baseUrl ?? defaultConfig.baseURL,
     endpoint: flags.endpoint ?? defaultConfig.endpoint,
-    reportDir: flags.reportDir ? path.resolve(flags.reportDir) : defaultConfig.reportDir,
+    reportDir: flags.reportDir ? path.resolve(flags.reportDir) : path.join(e2eDir, 'reports'),
+    screenshotDir: flags.shotsDir ? path.resolve(flags.shotsDir) : path.join(e2eDir, 'screenshots'),
     human: flags.human === false ? false : defaultConfig.human,
     screenshots: flags.shots ?? defaultConfig.screenshots,
     timeout: flags.timeout ? Number(flags.timeout) : defaultConfig.timeout,
   };
 
-  let specFiles = specInputs.length
-    ? await discoverSpecs(specInputs)
-    : [path.join(SKILL_DIR, 'scripts', 'self-test.spec.mjs')];
+  let specFiles;
+  if (specInputs.length) {
+    specFiles = await discoverSpecs(specInputs);
+  } else {
+    // 无参数时：若项目根 e2e/specs 下有用例，自动跑它们；否则跑内置自检
+    const auto = path.join(e2eDir, 'specs');
+    let autoFiles = [];
+    try {
+      const st = await fsp.stat(auto);
+      if (st.isDirectory()) autoFiles = await discoverSpecs([auto]);
+    } catch {
+      /* 目录不存在 */
+    }
+    specFiles = autoFiles.length
+      ? autoFiles
+      : [path.join(SKILL_DIR, 'scripts', 'self-test.spec.mjs')];
+  }
 
   if (flags.list) {
     console.log(specFiles.map((f) => path.relative(process.cwd(), f)).join('\n'));

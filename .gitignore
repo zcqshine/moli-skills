@@ -7,7 +7,8 @@ node_modules/
 # 日志与临时产物
 *.log
 
-# 测试产物（保留一份示例报告供展示）
-skills/moli-e2e-test/moli-reports/*
-!skills/moli-e2e-test/moli-reports/report.html
-!skills/moli-e2e-test/moli-reports/report.json
+# 测试产物（e2e 运行产物：报告与截图忽略，保留 specs 用例）
+skills/moli-e2e-test/e2e/reports/*
+!skills/moli-e2e-test/e2e/reports/.gitkeep
+skills/moli-e2e-test/e2e/screenshots/*
+!skills/moli-e2e-test/e2e/screenshots/.gitkeep

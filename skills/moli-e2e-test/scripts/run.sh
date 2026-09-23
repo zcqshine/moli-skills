@@ -5,18 +5,42 @@
 #   一键完成：准备 Node → 确保 Moli CDP 服务 → 确保 playwright → 跑用例 → 出 HTML 报告
 #
 # 用法：
-#   ./run.sh                                  # 跑内置自检用例（无需外部服务）
-#   ./run.sh ~/proj/e2e/login.spec.mjs --base-url http://localhost:3000
-#   ./run.sh ./specs --base-url http://localhost:3000
+#   ./run.sh init                             # 在被测项目根创建 e2e/ 目录骨架
+#   ./run.sh                                  # 跑内置自检，或自动跑 ./e2e/specs 下用例
+#   ./run.sh ~/proj/e2e/specs/login.spec.mjs --base-url http://localhost:3000
+#   ./run.sh ./e2e/specs --base-url http://localhost:3000
 #   ./run.sh --list                           # 列出将要运行的用例文件
 #
+# 目录约定（重要）：所有 e2e 产物统一收在项目的 e2e/ 下，不在项目根散落：
+#   e2e/specs/       用例（*.spec.mjs）
+#   e2e/reports/     测试报告（report.html / report.json）
+#   e2e/screenshots/ 截图
+#
 # 所有非本脚本自用的参数都会透传给 run.mjs（--base-url / --endpoint /
-# --report-dir / --no-human / --shots / --timeout / --list）。
+# --e2e-dir / --report-dir / --shots-dir / --no-human / --shots / --timeout / --list）。
 #
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$HERE")"
+
+# ---------- 脚手架：在被测项目根创建 e2e/ 目录 ----------
+if [ "${1:-}" = "init" ]; then
+  E2E_DIR="${2:-e2e}"
+  mkdir -p "$E2E_DIR/specs" "$E2E_DIR/reports" "$E2E_DIR/screenshots"
+  touch "$E2E_DIR/reports/.gitkeep" "$E2E_DIR/screenshots/.gitkeep"
+  if [ ! -f "$E2E_DIR/specs/example.spec.mjs" ] && [ -f "$SKILL_DIR/examples/login.spec.mjs" ]; then
+    cp "$SKILL_DIR/examples/login.spec.mjs" "$E2E_DIR/specs/example.spec.mjs"
+    echo "[moli-e2e] 已放置示例用例: $E2E_DIR/specs/example.spec.mjs（改选择器即可用）"
+  fi
+  echo "[moli-e2e] ✓ 已在 $(pwd)/$E2E_DIR 创建目录骨架："
+  echo "            specs/        用例（*.spec.mjs）"
+  echo "            reports/      测试报告（report.html / report.json）"
+  echo "            screenshots/  截图"
+  echo "          把用例放进 $E2E_DIR/specs/，然后："
+  echo "            bash $0 ./$E2E_DIR/specs --base-url http://localhost:3000"
+  exit 0
+fi
 
 # ---------- 选择 Node（需 >= 18）----------
 pick_node() {

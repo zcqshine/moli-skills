@@ -113,7 +113,10 @@ async function waitShown(loc, want, timeout) {
 export const defaultConfig = {
   endpoint: process.env.MOLI_CDP || 'http://127.0.0.1:9222',
   baseURL: process.env.BASE_URL || '',
-  reportDir: process.env.REPORT_DIR || path.resolve(process.cwd(), 'moli-reports'),
+  // 统一根目录：所有 e2e 产物（用例 / 报告 / 截图）都收在项目的 e2e/ 下，不在根目录散落
+  e2eDir: process.env.E2E_DIR || path.resolve(process.cwd(), 'e2e'),
+  reportDir: process.env.REPORT_DIR || path.resolve(process.cwd(), 'e2e', 'reports'),
+  screenshotDir: process.env.SHOTS_DIR || path.resolve(process.cwd(), 'e2e', 'screenshots'),
   human: process.env.MOLI_HUMAN !== '0', // 拟人模式默认开
   screenshots: process.env.MOLI_SHOTS || 'on-failure', // always | on-failure | off
   timeout: Number(process.env.MOLI_TIMEOUT || 15000),
@@ -190,7 +193,7 @@ export async function createSession(userCfg = {}, sharedBrowser = null) {
     },
 
     async screenshot(page, name) {
-      const dir = path.join(cfg.reportDir, 'shots');
+      const dir = cfg.screenshotDir;
       await fsp.mkdir(dir, { recursive: true });
       const file = path.join(dir, `${sanitize(name)}-${Date.now()}.png`);
       try {

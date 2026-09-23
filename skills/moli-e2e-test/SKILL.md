@@ -22,6 +22,30 @@ description: 用 Moli 无头浏览器模拟真人操作来测试网页模块：�
 - 像素级视觉回归（软件光栅化，非 Chrome 像素一致）→ 用真实 Chromium 做基线
 - WebGL / 高保真 Canvas / 媒体播放 → 用真实 Chromium
 
+## 目录约定（重要）
+
+**所有 e2e 相关产物统一收在被测项目的 `e2e/` 根目录下，不在项目根散落**（不再生成根级
+`moli-reports/`）。首次使用先在被测项目根执行脚手架：
+
+```bash
+# 在被测项目根目录执行，自动生成 e2e/ 骨架
+bash <skill目录>/scripts/run.sh init
+```
+
+生成结构：
+
+```
+<被测项目>/
+└── e2e/
+    ├── specs/        用例（*.spec.mjs）        ← 你的测试脚本/用例放这里
+    ├── reports/      测试报告（report.html / report.json）
+    └── screenshots/  截图（失败/全量，依 --shots）
+```
+
+- 报告默认落在 `e2e/reports/`、截图默认落在 `e2e/screenshots/`；可用 `--e2e-dir` 整体迁移，
+  或分别用 `--report-dir` / `--shots-dir` 单独覆盖。
+- `e2e/reports/` 与 `e2e/screenshots/` 是运行产物，建议写进项目 `.gitignore`（保留 `e2e/specs/`）。
+
 ## 工作流
 
 ### 1. 读文档与接口定义，明确「模块功能 + 预期行为」
@@ -43,7 +67,7 @@ description: 用 Moli 无头浏览器模拟真人操作来测试网页模块：�
 
 ### 3. 写 spec（只写用例，框架从本 skill 引入）
 
-放到被测项目里（如 `e2e/`），默认导出注册函数：
+放到被测项目的 `e2e/specs/` 下，默认导出注册函数：
 
 ```js
 export default function register(session) {
@@ -76,25 +100,29 @@ export default function register(session) {
 ### 4. 一键运行
 
 ```bash
+# 在被测项目根先建骨架（仅首次）
+bash <skill目录>/scripts/run.sh init
+
 # 跑内置自检（无需任何外部服务，验证环境）
-bash scripts/run.sh
+bash <skill目录>/scripts/run.sh
 
-# 跑你的用例
-bash scripts/run.sh ./e2e/crm-customer.spec.mjs --base-url http://localhost:3000
+# 跑你的用例（建议放在 e2e/specs/）
+bash <skill目录>/scripts/run.sh ./e2e/specs/crm-customer.spec.mjs --base-url http://localhost:3000
 
-# 整个目录 + 回归提速
-bash scripts/run.sh ./e2e --base-url http://localhost:3000 --no-human --report-dir ./artifacts
+# 整个目录 + 回归提速（产物默认落在 e2e/reports、e2e/screenshots）
+bash <skill目录>/scripts/run.sh ./e2e/specs --base-url http://localhost:3000 --no-human
 ```
 
 `run.sh` 会自动：解析 Node≥18 → 确保 Moli CDP 服务（`:9222`）→ 按需安装 playwright →
-运行用例 → 生成 HTML 报告 → 以非零退出码反映失败（可直接进 CI）。
+运行用例 → 生成 HTML 报告 → 以非零退出码反映失败（可直接进 CI）。无参数时若 `e2e/specs/`
+下有用例会自动运行它们，否则跑内置自检。
 
-常用参数：`--base-url` `--endpoint` `--report-dir` `--no-human`（关拟人提速）
-`--shots always|on-failure|off` `--timeout` `--list`。
+常用参数：`--base-url` `--endpoint` `--e2e-dir` `--report-dir` `--shots-dir`
+`--no-human`（关拟人提速）`--shots always|on-failure|off` `--timeout` `--list`。
 
 ### 5. 读报告，收敛用例
 
-打开 `moli-reports/report.html`：汇总卡（通过率/耗时）+ 每个用例状态 + 失败详情
+打开 `e2e/reports/report.html`：汇总卡（通过率/耗时）+ 每个用例状态 + 失败详情
 （错误信息、控制台错误、失败请求、失败截图）。据此区分「功能缺陷」与「用例假设过期」，
 补充回归用例，形成可重复执行的资产。同目录另有 `report.json` 供 CI 解析。
 
@@ -114,6 +142,9 @@ moli-e2e-test/
 ├── examples/login.spec.mjs        # 登录模块模板（改选择器即可用）
 └── references/                    # 用例设计 / 拟人 / 校验 / 选择器 / 排障
 ```
+
+> 上面是 **skill 自身**的目录。运行时它不会在被测项目根散落文件：报告与截图按上文
+> 「目录约定」统一写到被测项目的 `e2e/reports` 与 `e2e/screenshots`。
 
 ## 关键注意（实测坑）
 

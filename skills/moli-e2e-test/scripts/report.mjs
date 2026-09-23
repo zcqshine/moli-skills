@@ -48,7 +48,7 @@ function diagBlock(diag) {
  * @returns {Promise<string>} 报告文件路径
  */
 export async function writeReport(summary, cfg = {}) {
-  const dir = cfg.reportDir || summary.reportDir || path.resolve(process.cwd(), 'moli-reports');
+  const dir = cfg.reportDir || summary.reportDir || path.resolve(process.cwd(), 'e2e', 'reports');
   await fsp.mkdir(dir, { recursive: true });
 
   const totals = summary.totals || {
