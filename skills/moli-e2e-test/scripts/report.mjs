@@ -75,6 +75,9 @@ export async function writeReport(summary, cfg = {}) {
       }
       const detail = [];
       if (r.error?.message) detail.push(`<div class="err">${esc(r.error.message)}</div>`);
+      // 页面 URL：失败时必显（含 about:blank，说明用例没自己 goto）；成功时仅显示真实页面
+      if (r.url && (r.url !== 'about:blank' || r.status === 'failed'))
+        detail.push(`<div class="pg">页面: <code>${esc(r.url)}</code></div>`);
       if (r.diag) detail.push(diagBlock(r.diag));
       if (r.shot) detail.push(await imgTag(r.shot, shotBase));
       rows.push(`<tr class="case ${r.status}">
@@ -124,7 +127,9 @@ export async function writeReport(summary, cfg = {}) {
   td.dt{color:#4a5443}
   .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;color:#fff}
   .b-pass{background:var(--pass)} .b-fail{background:var(--fail)} .b-skip{background:var(--skip)}
-  .err{color:var(--fail);margin-bottom:6px}
+  .err{color:var(--fail);margin-bottom:6px;white-space:pre-wrap;word-break:break-word}
+  .pg{color:#6b7563;font-size:12px;margin:0 0 6px}
+  .pg code{background:#f2f5ef;padding:1px 5px;border-radius:4px;font-size:11px;word-break:break-all}
   .diag{background:#fff8f8;border:1px solid #f2d7d7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:12px}
   .diag b{color:#8a3b3b}
   .diag pre{margin:4px 0 0;white-space:pre-wrap;word-break:break-word;color:#5a4a4a}

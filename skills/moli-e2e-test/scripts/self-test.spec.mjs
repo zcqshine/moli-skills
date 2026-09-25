@@ -187,4 +187,75 @@ export default function register(session) {
       await t.expect.noFieldError('#fi-password');
     });
   });
+
+  // ── 框架自诊断能力回归 ────────────────────────────────────────────────
+  // 这三条能力对应实测踩过的坑：伪类误用报错难懂、找不到元素不知为何、
+  // 每例新建页面导致断言落在空白页上。用例保证它们不回退。
+  session.describe('框架自诊断能力 · 回归', () => {
+    const load = (f) => import(new URL(f, import.meta.url).href);
+
+    session.it('overlay 误用 Playwright 私有伪类：应前置拦截并给出改法', async (t) => {
+      const ov = await load('./overlay-helpers.mjs');
+      let msg = '';
+      try {
+        await ov.domClick(t, '.el-select-dropdown__item:has-text("北京")', null);
+      } catch (e) {
+        msg = e.message;
+      }
+      await t.expect.ok(/只接受纯 CSS/.test(msg), '应报「只接受纯 CSS」，实际: ' + msg);
+      await t.expect.ok(/:has-text\(\)/.test(msg), '应点明命中的私有语法，实际: ' + msg);
+      await t.expect.ok(/改法/.test(msg), '应给出改法，实际: ' + msg);
+    });
+
+    session.it('overlay 语法合法但不存在的选择器：超时应附诊断而非裸超时', async (t) => {
+      await t.page.setContent('<div id="root">页面已就绪</div>');
+      const ov = await load('./overlay-helpers.mjs');
+      let msg = '';
+      try {
+        await ov.waitForShown(t, '#not-there', null, { timeout: 600 });
+      } catch (e) {
+        msg = e.message;
+      }
+      await t.expect.ok(/等待出现超时/.test(msg), '应报等待超时，实际: ' + msg);
+      await t.expect.ok(/匹配 0 个元素/.test(msg), '应指出元素不在 DOM，实际: ' + msg);
+    });
+
+    session.it('诊断器：被祖先 display:none 隐藏时应指出隐藏原因', async (t) => {
+      const { diagnoseSelector } = await load('./selector-doctor.mjs');
+      await t.page.setContent('<div id="wrap" style="display:none"><button id="save">保存</button></div>');
+      const d = await diagnoseSelector(t.page, '#save', { fnName: '探针' });
+      await t.expect.ok(d.includes('div#wrap'), '应指出隐藏它的祖先元素，实际: ' + d);
+      await t.expect.ok(d.includes('display:none'), '应指出隐藏方式，实际: ' + d);
+      await t.expect.ok(d.includes('全部不可见'), '应说明「在 DOM 但不可见」，实际: ' + d);
+    });
+
+    session.it('诊断器：可见但文本不匹配时应列出实际候选文本', async (t) => {
+      const { diagnoseSelector } = await load('./selector-doctor.mjs');
+      await t.page.setContent('<ul><li class="opt">北京</li><li class="opt">上海</li></ul>');
+      const d = await diagnoseSelector(t.page, '.opt', { text: '广州' });
+      await t.expect.ok(d.includes('没有一个的文本包含 "广州"'), '应指出文本不匹配，实际: ' + d);
+      await t.expect.ok(/"北京"/.test(d), '应列出可见候选的实际文本，实际: ' + d);
+    });
+
+    session.it('expect.visible 超时：错误信息应附带选择器诊断', async (t) => {
+      const { blankPageHint } = await load('./harness.mjs');
+      await t.page.setContent('<div style="display:none"><button id="save">保存</button></div>');
+      const prev = t.config.timeout;
+      t.config.timeout = 800; // 仅缩短等待；诊断内容与超时长短无关
+      let msg = '';
+      try {
+        await t.expect.visible('#save', '保存按钮应可见');
+      } catch (e) {
+        msg = e.message;
+      } finally {
+        t.config.timeout = prev;
+      }
+      await t.expect.ok(msg.includes('保存按钮应可见'), '应保留原始错误信息，实际: ' + msg);
+      await t.expect.ok(msg.includes('选择器诊断'), '应附带诊断，实际: ' + msg);
+      await t.expect.ok(msg.includes('display:none'), '应指出隐藏原因，实际: ' + msg);
+      // 空白页守卫：真实页面不得误报
+      await t.expect.ok(blankPageHint('about:blank').includes('goto'), 'about:blank 应提示自行 goto');
+      await t.expect.ok(blankPageHint('http://localhost:3000/crm') === '', '真实页面不应触发空白页提示');
+    });
+  });
 }

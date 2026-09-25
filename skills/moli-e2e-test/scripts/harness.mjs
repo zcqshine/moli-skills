@@ -20,6 +20,9 @@ import path from 'node:path';
 import os from 'node:os';
 import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { diagnoseSelector } from './selector-doctor.mjs';
+
+export { diagnoseSelector };
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -62,6 +65,32 @@ const asLocator = (page, t) => (typeof t === 'string' ? page.locator(t) : t);
 const desc = (t) =>
   typeof t === 'string' ? t : t && typeof t.toString === 'function' ? t.toString() : String(t);
 const sanitize = (s) => String(s).replace(/[^\w\u4e00-\u9fa5.-]+/g, '_').slice(0, 60);
+
+/**
+ * 页面是否「真正空白」：URL 为 about:blank **且** body 无子元素。
+ * （用 t.page.setContent() 注入过内容的页面 URL 也是 about:blank，但 body 非空，故不算空白。）
+ */
+async function isBlankPage(page) {
+  try {
+    if (page.url() !== 'about:blank') return false;
+    return !(await page.evaluate(() => !!(document.body && document.body.childElementCount > 0)));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 空白页失败提示。根因：本框架每个用例都会 context.newPage()
+ * （登录态经 context 共享，但页面不继承），用例不自己 goto 就会在空白页上断言。
+ */
+export function blankPageHint(url) {
+  if (url && url !== 'about:blank') return '';
+  return [
+    '【提示】每个用例都会新建页面（newPage）：登录态经 context 共享，但页面不会继承。',
+    '        用例开头需自行调用 await t.human.goto(路径)（或 t.page.setContent(html)）。',
+    `        当前页面仍是 about:blank，断言实际是在空白页上执行的。`,
+  ].join('\n');
+}
 
 /** 常见 UI 库的字段级错误文案选择器 */
 const ERROR_SEL =
@@ -218,6 +247,7 @@ export async function createSession(userCfg = {}, sharedBrowser = null) {
             error: test.skipReason ? { message: test.skipReason } : null,
             shot: null,
             diag: emptyDiag(),
+            url: null,
             steps: [],
           });
           process.stdout.write(`  ⏭ SKIP${test.skipReason ? '  (' + test.skipReason + ')' : ''}\n`);
@@ -228,7 +258,9 @@ export async function createSession(userCfg = {}, sharedBrowser = null) {
         const ok = r.status === 'passed';
         process.stdout.write(`  ${ok ? '✅ PASS' : '❌ FAIL'}  (${r.ms}ms)\n`);
         if (!ok) {
-          process.stdout.write(`     ↳ ${r.error.message}\n`);
+          // 错误信息可能多行（含选择器诊断），续行缩进以保持可读
+          process.stdout.write(`     ↳ ${r.error.message.split('\n').join('\n       ')}\n`);
+          if (r.url) process.stdout.write(`     页面: ${r.url}\n`);
           if (r.shot) process.stdout.write(`     截图: ${r.shot}\n`);
           if (r.diag.consoleErrors.length)
             process.stdout.write(`     控制台错误: ${r.diag.consoleErrors[0]}\n`);
@@ -299,19 +331,29 @@ async function runTest(session, test) {
   let status = 'passed';
   let error = null;
   let shot = null;
+  let blank = false;
   try {
     await test.fn(t);
   } catch (e) {
     status = 'failed';
-    error = { message: norm(e && e.message ? e.message : e), stack: e && e.stack };
-    if (cfg.screenshots !== 'off') shot = await session.screenshot(page, `${test.group || 'test'}-${test.name}`);
+    // 空白页守卫：不自己 goto 的用例会在 about:blank 上断言，必须把根因说清楚
+    blank = await isBlankPage(page);
+    const raw = norm(e && e.message ? e.message : e);
+    error = {
+      message: blank ? `${raw}\n${blankPageHint(page.url())}` : raw,
+      stack: e && e.stack,
+    };
+    // 空白页截图必然全白，误导性强，直接不产出
+    if (cfg.screenshots !== 'off' && !blank)
+      shot = await session.screenshot(page, `${test.group || 'test'}-${test.name}`);
   }
   if (status === 'passed' && cfg.screenshots === 'always') {
     shot = await session.screenshot(page, `${test.group || 'test'}-${test.name}`);
   }
   const ms = Date.now() - started;
+  const url = page.url();
   await page.close().catch(() => {});
-  return { group: test.group, name: test.name, status, ms, error, shot, diag, steps: t._steps };
+  return { group: test.group, name: test.name, status, ms, error, shot, diag, url, steps: t._steps };
 }
 
 /* ------------------------------------------------------------------ *
@@ -326,11 +368,22 @@ function buildContext(session, page) {
   };
   const abs = (u) => session.abs(u);
 
+  /**
+   * 失败诊断：把「为什么找不到」拼进错误信息。
+   * 字符串选择器可进页面探测；Locator 对象只能展示其字符串形式（probe=false）。
+   */
+  const diagFor = async (target, { fnName, text = null } = {}) => {
+    const s = typeof target === 'string' ? target : null;
+    return diagnoseSelector(page, s || desc(target), { fnName, text, probe: !!s });
+  };
+  const withDiag = async (msg, target, opts) => `${msg}\n${await diagFor(target, opts)}`;
+
   /* ---- 底层：稳健聚焦/点击（规避 Moli 零尺寸布局） ---- */
   const prepare = async (target) => {
     const loc = asLocator(page, target).first();
     await loc.waitFor({ state: 'attached', timeout: cfg.timeout });
-    if (!(await isShown(loc))) throw new Error(`目标不可见: ${desc(target)}`);
+    if (!(await isShown(loc)))
+      throw new Error(await withDiag(`目标不可见: ${desc(target)}`, target, { fnName: 'human(准备元素)' }));
     await loc.scrollIntoViewIfNeeded().catch(() => {});
     return loc;
   };
@@ -423,13 +476,17 @@ function buildContext(session, page) {
     async visible(target, msg) {
       const loc = asLocator(page, target);
       if (!(await waitShown(loc, true, cfg.timeout)))
-        throw new Error(msg || `预期元素可见，但未出现: ${desc(target)}`);
+        throw new Error(
+          await withDiag(msg || `预期元素可见，但未出现: ${desc(target)}`, target, { fnName: 'expect.visible' }),
+        );
     },
     /** 隐藏/不存在 */
     async hidden(target, msg) {
       const loc = asLocator(page, target);
       if (!(await waitShown(loc, false, cfg.timeout)))
-        throw new Error(msg || `预期元素隐藏，但一直可见: ${desc(target)}`);
+        throw new Error(
+          await withDiag(msg || `预期元素隐藏，但一直可见: ${desc(target)}`, target, { fnName: 'expect.hidden' }),
+        );
     },
     /** 文本断言（轮询到匹配或超时） */
     async text(target, expected, { exact = true } = {}) {
@@ -446,7 +503,11 @@ function buildContext(session, page) {
         await sleep(120);
       }
       throw new Error(
-        `文本不匹配: 实际="${actual}" 期望${expected instanceof RegExp ? '匹配' : exact ? '==' : '包含'}"${expected}"`,
+        await withDiag(
+          `文本不匹配: 实际="${actual}" 期望${expected instanceof RegExp ? '匹配' : exact ? '==' : '包含'}"${expected}"`,
+          target,
+          { fnName: 'expect.text', text: typeof expected === 'string' ? expected : null },
+        ),
       );
     },
     async contains(target, expected) {
@@ -463,7 +524,7 @@ function buildContext(session, page) {
         if (Date.now() >= deadline) break;
         await sleep(120);
       }
-      throw new Error(`值不匹配: 实际="${actual}" 期望="${expected}"`);
+      throw new Error(await withDiag(`值不匹配: 实际="${actual}" 期望="${expected}"`, target, { fnName: 'expect.value' }));
     },
     /** 数量断言（轮询） */
     async count(target, n) {
@@ -476,7 +537,9 @@ function buildContext(session, page) {
         await sleep(120);
         c = await loc.count().catch(() => 0);
       }
-      throw new Error(`数量不匹配: 实际=${c} 期望=${n} (${desc(target)})`);
+      throw new Error(
+        await withDiag(`数量不匹配: 实际=${c} 期望=${n} (${desc(target)})`, target, { fnName: 'expect.count' }),
+      );
     },
     /** URL 断言（轮询，兼容 SPA 异步路由） */
     async url(pattern) {
@@ -509,7 +572,13 @@ function buildContext(session, page) {
       if (!txt) {
         const cls = (await item.getAttribute('class').catch(() => '')) || '';
         if (!/is-error|has-error|ant-form-item-has-error|error/.test(cls)) {
-          throw new Error(`预期字段出现校验错误，但未见错误文案或错误态: ${desc(formItem)}`);
+          throw new Error(
+            await withDiag(
+              `预期字段出现校验错误，但未见错误文案或错误态: ${desc(formItem)}`,
+              formItem,
+              { fnName: 'expect.fieldError' },
+            ),
+          );
         }
       }
       if (message != null) {
@@ -548,7 +617,10 @@ function buildContext(session, page) {
         if (txt) break;
         await sleep(100);
       }
-      if (!txt) throw new Error('预期出现提示条(toast/message)，但未捕获到任何提示文案');
+      if (!txt)
+        throw new Error(
+          await withDiag('预期出现提示条(toast/message)，但未捕获到任何提示文案', sel, { fnName: 'expect.toast' }),
+        );
       const good = pattern instanceof RegExp ? pattern.test(txt) : txt.includes(String(pattern));
       if (!good) throw new Error(`提示文案不匹配: 实际="${txt}" 期望包含"${pattern}"`);
       return txt;

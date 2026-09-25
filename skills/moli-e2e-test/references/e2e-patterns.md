@@ -68,6 +68,10 @@ export default function register(session) {
 
 `t` 提供 `human`（拟人操作）、`expect`（断言）、`step/log`（步骤）、`page`（裸 Playwright 页面）。
 
+> **每个用例都是新页面**：harness 在每例内部 `context.newPage()`，登录态经 context 共享、
+> 页面**不**继承。所以每个 `it` 开头都要自己 `await t.human.goto('/路径')`（或
+> `t.page.setContent(html)`）；忘了就会被 about:blank 守卫指出（见 Troubleshooting）。
+
 ## CI setup
 
 一键脚本已封装全部前置步骤（探测 Node≥20、起 Moli 服务、按需装 playwright、跑用例、出报告、非零退出码）：
@@ -114,6 +118,10 @@ bash scripts/run.sh ./e2e/specs --base-url ...              # 跑用例
 | 表格操作列点击报「hit-test intercept」（点到分页/别的元素） | 横向滚动表格区 scrollIntoView 后坐标过期 | 行内交互改 `ov.rowClick` DOM 级 |
 | 浏览器突然导航/请求超时，但服务 curl 都正常 | 共享 CDP 浏览器攒了残留 page（探针只 `browser.close()` 不关 page） | `curl -s :9222/json/list` 数 targets，逐个 `/json/close/<id>` 清理；探针脚本收尾必须 `page.close()` |
 | 首轮大面积失败，分不清功能缺陷还是用例问题 | 用例假设（选择器/交互）未经真实验证 | **探针先行**：先用最小裸 Playwright 脚本逐个验证交互原语，再全量编排 spec |
+| 某用例断言全「元素不存在」，`page.url()` 是 `about:blank` | 忘了 goto：每例都是新页面，页面状态不继承 | 用例开头补 `await t.human.goto('/路径')`；框架已加守卫，失败信息会直接提示 |
+| 失败信息只写「等不到 X」，不知是没渲染还是被隐藏 | ——（已改进：错误信息自动附选择器诊断） | 读附带的诊断行：`匹配 0 个元素`＝不在 DOM；`最近隐藏原因: xxx 的 display:none`＝被祖先隐藏；`可见候选的实际文本: [...]`＝文案不符 |
+| 失败截图整张全白 | 页面还是 about:blank 就截图（渲染为空） | 已改为**空白页不产截图**；若仍看到白图，说明页面渲染确实为空，查前后端加载 |
+| `ov.*` 报「sel 只接受纯 CSS 选择器」 | 传了 `text=xxx` / `:has-text()` / `:visible` 等 Playwright 私有语法 | 按报错里的改法：sel 只写纯 CSS，文本作为第二个参数传入 |
 
 ## Fit / boundary matrix
 

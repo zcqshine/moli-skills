@@ -77,6 +77,10 @@ bash <skill目录>/scripts/run.sh init
 
 放到被测项目的 `e2e/specs/` 下，默认导出注册函数：
 
+> ⚠ **每个用例开头都要自己 `await t.human.goto('/路径')`**：harness 在每例内部
+> `context.newPage()`——登录态经 context 共享，但**页面不继承**，新页面从 `about:blank`
+> 开始。忘了 goto 会表现为「所有断言都找不到元素」，框架已加守卫会直接提示。
+
 ```js
 export default function register(session) {
   session.describe('CRM · 新增客户', () => {
@@ -135,8 +139,8 @@ bash <skill目录>/scripts/run.sh ./e2e/specs --base-url http://localhost:3000 -
 ### 5. 读报告，收敛用例
 
 打开 `e2e/reports/report.html`：汇总卡（通过率/耗时）+ 每个用例状态 + 失败详情
-（错误信息、控制台错误、失败请求、失败截图）。据此区分「功能缺陷」与「用例假设过期」，
-补充回归用例，形成可重复执行的资产。同目录另有 `report.json` 供 CI 解析。
+（错误信息、选择器诊断、页面 URL、控制台错误、失败请求、失败截图）。据此区分「功能缺陷」与
+「用例假设过期」，补充回归用例，形成可重复执行的资产。同目录另有 `report.json` 供 CI 解析。
 
 ## 目录结构
 
@@ -149,8 +153,9 @@ moli-e2e-test/
 │   ├── run.mjs                    # 用例编排 + 报告聚合
 │   ├── harness.mjs                # 拟人操作 / 断言 / 诊断
 │   ├── overlay-helpers.mjs        # Overlay DOM 级交互助手（浮层实测坑规避）
+│   ├── selector-doctor.mjs        # 选择器诊断器（失败时回答「为什么找不到」）
 │   ├── report.mjs                 # HTML/JSON 报告
-│   └── self-test.spec.mjs         # 环境自检（内置示例表单）
+│   └── self-test.spec.mjs         # 环境自检（内置示例表单 + 自诊断能力回归）
 ├── examples/login.spec.mjs        # 登录模块模板（改选择器即可用）
 └── references/                    # 用例设计 / 拟人 / 校验 / 选择器 / 排障
 ```
@@ -171,7 +176,15 @@ moli-e2e-test/
   同文件的「Overlay 实战手册」小节有完整范例。
 - **`:has-text()` / `:text()` / `:visible` 是 Playwright 私有伪类**：只能用于 locator；
   传进 `page.evaluate` 里的 `querySelectorAll` 会抛 `DOMException`。evaluate 场景用纯 CSS +
-  单独的文本过滤参数。
+  单独的文本过滤参数。`ov.*` 已做**前置拦截**：误用时立刻抛出带改法的错误
+  （例：`ov.domClick` 收到 `text=xxx` → 提示「sel 只接受纯 CSS，文本走第二个参数」），
+  不会等到超时才报一个难懂的 DOMException。
+- **每个用例都是新页面**（`context.newPage()`）：登录态经 context 共享，但页面不继承，
+  每例开头必须自行 `t.human.goto(...)`。忘了时失败信息会提示 about:blank 根因，
+  且**不再产出误导性的全白截图**。
+- **失败信息自带选择器诊断**：断言/等待失败时，错误里会直接给出「当前 URL + 匹配几个元素 +
+  是根本不在 DOM / 被哪个祖先以什么方式隐藏 / 可见候选的实际文本」，不需要再手工 dump。
+  诊断实现见 `scripts/selector-doctor.mjs`（也可在自定义断言里手动调用）。
 - **首跑前先写最小探针**：新页面/新组件集，先用裸 Playwright 脚本逐个验证交互原语
   （点击、选项、输入、toast 读取）在 Moli 下确实生效，再全量编排 spec——否则会把
   「用例假设不成立」误判成「功能缺陷」，白跑多轮。

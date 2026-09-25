@@ -10,13 +10,17 @@
 6. 组件类名（Element Plus / AntD），配合 `:has()` 限定范围
 7. 最后才用：`nth-child`、深层 CSS 链、依赖兄弟顺序
 
+> ⚠ 第 4、5 条是 **Playwright locator 专属语法**（只能用于 `t.human.*` / `t.page.locator` /
+> `t.expect.count`）。传进 `page.evaluate` 里的 `querySelectorAll` 会抛 `DOMException`——
+> `ov.*` 的 sel 参数**只收纯 CSS**，文本走单独参数。详见下文「Overlay 实战手册」。
+
 **限定到就近容器**，避免全局匹配到多个同名元素：
 
 ```js
 '.el-form-item:has(#email)'            // 字段项
-'.el-dialog:has-text("新增客户") input' // 弹窗内输入
+'.el-dialog:has-text("新增客户") input' // 弹窗内输入（locator 场景）
 '.el-drawer .el-form-item:has(#name)'   // 抽屉内（详情用抽屉模式）
-'.el-table__row:has-text("示例客户")'   // 表格某行
+'.el-table__row:has-text("示例客户")'   // 表格某行（locator 场景）
 ```
 
 ## 常见组件选择器
@@ -46,8 +50,8 @@ Moli 是「结构优先、按需渲染」的引擎，默认布局较简化。实
 
 **本框架的应对（已内置，直接受益）**：
 
-- `expect.visible / hidden` 改用「计算样式 + 祖先链」（`checkVisibility`）判定，
-  不依赖包围盒 → 规避该问题。
+- `expect.visible / hidden` 改用「计算样式 + 祖先链」判定（不依赖 `checkVisibility`，
+  因为它的选项可能被引擎忽略），不依赖包围盒 → 规避该问题。
 - `human.click / type` 在原生点击失败时自动回退 `force`。
 - 因此用例里**优先用 `t.expect.*` 而不是裸 `locator.isVisible()`**。
 
@@ -90,6 +94,38 @@ await ov.waitForGone(t, '.el-drawer')
 - **伪选择器禁令**：`:has-text()` / `:text()` / `:visible` 只能出现在 Playwright locator
   （`t.human.*`、`t.page.locator`、`t.expect.count`）里；出现在 `page.evaluate` 的
   `querySelectorAll` 里直接抛 `DOMException`。ov.* 的 sel 参数只收纯 CSS，文本用第二参数。
+
+## 每个用例都是新页面（最容易踩的隐式行为）
+
+harness 在每个 `session.it()` 内部都会 `context.newPage()`：**登录态经 context 共享，
+但页面不共享**——上一例停在哪一页，下一例不会继承，新页面从 `about:blank` 开始。
+
+- 每个用例**必须自己** `await t.human.goto('/路径')`（或 `t.page.setContent(html)`）；
+- 不存在「用例间共享页面状态」的隐式行为；需要登录态就写登录步骤，或复用 `storageState`；
+- 忘了 goto 的典型症状：断言全部「元素不存在」，且 `page.url() === 'about:blank'`。
+  框架已加守卫：这种情况失败信息会直接提示「用例开头需自行 goto」，并且
+  **不再产出误导性的全白截图**。
+
+## 「找不到元素」怎么读：选择器诊断器
+
+断言 / 等待失败时，错误信息**已经自动带上**诊断（不必再手工 dump 排查）。它区分四种情况：
+
+| 诊断输出 | 含义 | 处理 |
+|---|---|---|
+| `匹配 0 个元素 → 元素根本不在 DOM` | 未 goto / 未渲染 / 选择器写错 | 看同一行的 `当前 URL`；若是 `about:blank` 即没 goto |
+| `匹配 N 个元素，但全部不可见` + `最近隐藏原因: xxx 的 display:none` | 在 DOM 但被祖先隐藏（折叠菜单、未展开的下拉、v-show 关闭的抽屉） | 先展开/触发；或改用 `ov.*` 的 DOM 级交互 |
+| `没有一个的文本包含 "xxx"` + `可见候选的实际文本: [...]` | 元素在且可见，但文案与预期不符 | 按列出的真实文案修正断言或选择器 |
+| `语法非法：:has-text() … 改法：…` | 选择器含 Playwright 私有语法 | 按给出的改法改 |
+
+也可以在用例里手动调用（例如自定义断言）：
+
+```js
+import { diagnoseSelector } from '/path/to/moli-e2e-test/scripts/selector-doctor.mjs'
+throw new Error(await diagnoseSelector(t.page, '.el-drawer button', { fnName: '我的断言', text: '提交' }))
+```
+
+`ov.*` 的误用是**前置拦截**的：传 `text=xxx` 或 `:has-text()` 会立刻抛出带改法的错误，
+不再等 8 秒超时后抛一个难懂的 `DOMException`。
 
 ## 其它稳健性建议
 

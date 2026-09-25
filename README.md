@@ -207,7 +207,7 @@ bash skills/moli-e2e-test/scripts/run.sh init
 bash skills/moli-e2e-test/scripts/run.sh skills/moli-e2e-test/scripts/self-test.spec.mjs
 ```
 
-输出 8 条用例结果，报告落在当前目录的 `e2e/reports/report.html`。
+输出 13 条用例结果（8 条表单功能/边界 + 5 条框架自诊断能力回归），报告落在当前目录的 `e2e/reports/report.html`。
 
 ### 3. 跑你自己模块的用例
 
@@ -234,6 +234,10 @@ export default function register(session) {
 }
 ```
 
+> **每个用例开头都要自己 `t.human.goto(...)`**：harness 在每例内部 `context.newPage()`——
+> 登录态经 context 共享，但**页面不继承**。忘了 goto 会表现为「所有断言都找不到元素」，
+> 框架会直接把 `about:blank` 根因写进失败信息，并且不再产出误导性的全白截图。
+
 ```bash
 # 跑单个 spec
 bash skills/moli-e2e-test/scripts/run.sh ./e2e/specs/crm-customer.spec.mjs --base-url http://localhost:3000
@@ -249,6 +253,10 @@ bash skills/moli-e2e-test/scripts/run.sh ./e2e/specs --base-url http://localhost
 - `t.step` / `t.log` — 分步与日志
 - `t.page` — 裸 Playwright 页面对象，能力不够时直接下钻
 - `t.isShown` — 布局无关的可见性判定（见[已知坑](#已知坑)）
+
+失败信息**自带选择器诊断**：断言/等待失败时会直接给出「当前 URL + 匹配几个元素 + 是根本不在
+DOM / 被哪个祖先以什么方式隐藏 / 可见候选的实际文本」，不需要再手工 dump。诊断实现是
+`scripts/selector-doctor.mjs`（也可在自定义断言里 `import { diagnoseSelector }` 手动调用）。
 
 常用参数：`--base-url` `--endpoint` `--e2e-dir` `--report-dir` `--shots-dir` `--no-human` `--shots always|on-failure|off` `--timeout` `--list`
 
@@ -275,24 +283,24 @@ cp -R skills/* ~/.workbuddy/skills/
 
 ## 实测数据
 
-`moli-e2e-test` 内置自检（8 条用例，覆盖空表单拦截、邮箱格式、手机号格式、密码过短、
-用户名长度边界、修正后错误消失、特殊字符与超长、XSS 不注入）：
+`moli-e2e-test` 内置自检（13 条用例：8 条表单功能/边界 —— 空表单拦截、邮箱格式、手机号格式、
+密码过短、用户名长度边界、修正后错误消失、特殊字符与超长、XSS 不注入；5 条框架自诊断能力回归
+—— 私有伪类前置拦截、超时附诊断、隐藏原因定位、文本候选列出、空白页守卫）：
 
 ```
 ▶ 用户注册表单 · 功能与边界 › 空表单提交：应被前端拦截并提示全部必填项
   ✅ PASS  (1234ms)
 ▶ 用户注册表单 · 功能与边界 › 邮箱格式非法：应被拦截并提示格式错误
   ✅ PASS  (5175ms)
-▶ 用户注册表单 · 功能与边界 › 手机号格式非法：应被拦截并提示格式错误
-  ✅ PASS  (4899ms)
-  ...（其余 5 条同样 PASS）
+  ...（其余 11 条同样 PASS）
 ══════ 汇总 ══════
-用例 8 · 通过 8 · 失败 0 · 跳过 0 · 耗时 35.1s
+用例 13 · 通过 13 · 失败 0 · 跳过 0 · 耗时 36.7s
 报告: <项目>/e2e/reports/report.html
 ```
 
 `moli serve --layout` + Playwright `connectOverCDP` 全绿。跑完直接打开
-`e2e/reports/report.html` —— 汇总卡 + 每个用例明细 + 失败截图（报告自包含 base64，可归档分享）。
+`e2e/reports/report.html` —— 汇总卡 + 每个用例明细（失败时含选择器诊断、页面 URL、失败截图；
+报告自包含 base64，可归档分享）。
 
 ---
 
@@ -302,6 +310,9 @@ cp -R skills/* ~/.workbuddy/skills/
 
 | 坑 | 现象 | 对策 |
 |---|---|---|
+| **每例都是新页面** | harness 在每例内部 `context.newPage()`：登录态经 context 共享，但**页面不继承**。用例不自己 goto 就会在 `about:blank` 上断言，表现为「所有断言都找不到元素」 | 每例开头 `await t.human.goto('/路径')`；忘了时失败信息会直接提示 about:blank（且不产全白截图） |
+| **找不到元素不知为何** | 旧版只报「等不到 X」，分不清是没渲染、被隐藏还是文案不符 | 现在失败信息**自动附选择器诊断**：`匹配 0 个元素`＝不在 DOM；`最近隐藏原因: X 的 display:none`＝被祖先隐藏（折叠菜单/未展开下拉）；`可见候选的实际文本: [...]`＝文案不符 |
+| **`ov.*` 传了 Playwright 私有语法** | 传 `text=xxx` / `:has-text()` 会抛难懂的 `DOMException`（旧版要等超时才发现） | 已**前置拦截**：立刻抛出含改法的错误（sel 只收纯 CSS，文本走第二个参数） |
 | **Moli 布局特性** | 无显式尺寸的元素（如只含文本的 `div`）返回 **0×0 包围盒**，Playwright 原生 `isVisible()` / `click()` 误判为不可见 | 用 `t.expect.*` / `t.isShown`（基于计算样式 + 祖先链），别用裸 `isVisible()`；harness 对零尺寸元素已在点击/输入时加 force 回退 |
 | **服务被回收** | 短命 shell 里 `moli serve &` 会在命令返回后被杀，后续连接 502 | 用 `nohup ... &` 或 launchd；`run.sh` 已自动处理 |
 | **ESM 不认 NODE_PATH** | ESM 脚本 `import "playwright"` 从脚本所在目录向上找 `node_modules`，`NODE_PATH` 无效 | 脚本放在 `node_modules` 所在目录内运行（`run.sh` 已处理） |
@@ -310,6 +321,48 @@ cp -R skills/* ~/.workbuddy/skills/
 | **别忘 `--layout`** | 不加就没有几何/截图/PDF | 涉及坐标点击、截图必须加 |
 
 **不适合的场景**：像素级视觉回归（软件光栅化，不等同 Chrome 像素）、WebGL / 高保真 Canvas / 媒体播放。这些用真实 Chromium 做基线。
+
+---
+
+## 维护：三副本同步
+
+本项目在开发机上同时存在三份 skill 副本，**改完代码必须一起同步**，否则会静默漂移（各份跑不同版本，且不易察觉）：
+
+| # | 位置 | `agent_created` | 角色 |
+|---|---|---|---|
+| 1 | `~/.workbuddy/skills/<skill>` | 保留 | **唯一真源**，改代码只改这里 |
+| 2 | `~/.agents/skills/<skill>` | 保留 | agents 分发副本 |
+| 3 | `<本仓库>/skills/<skill>` | 去掉 | 对外分发副本 |
+
+`scripts/sync-moli-skills.sh` 把「同步 + 标记处理 + 一致性校验」做成一条命令：
+
+```bash
+# 同步默认 skill（moli-e2e-test）到另两份
+bash scripts/sync-moli-skills.sh
+
+# 只检查是否漂移，不改动（有漂移则退出码 1，可进 CI）
+bash scripts/sync-moli-skills.sh --check
+
+# 预览将要同步/删除的内容
+bash scripts/sync-moli-skills.sh --dry-run
+
+# 同步全部 moli-* skill，并提交推送到 GitHub
+bash scripts/sync-moli-skills.sh --all --git
+
+# 软链后一条命令搞定
+ln -sf "$PWD/scripts/sync-moli-skills.sh" ~/.local/bin/sync-moli-skills
+sync-moli-skills --all --git
+```
+
+脚本会做的事：
+
+- `rsync -a --delete --checksum` 同步内容（排除 `node_modules`、`e2e/`、`moli-reports/` 等运行产物与依赖），目标端多余文件会被删除；
+- `SKILL.md` **单独处理，不走 rsync 直传**：只比「去掉 `agent_created` 后的正文」，正文真变了才重写，再按目标加/去标记——避免每次运行都无谓重写、以及 dry-run 谎报变更；
+- 同步后自动校验：全量内容比对 + `SKILL.md` 正文比对 + 标记状态 + `run.sh` 执行位；任一项不过即非零退出码。
+
+可用 `--repo <dir>` 或环境变量 `MOLI_SKILLS_REPO` 指定镜像仓库路径（默认自动探测 `$HOME/WorkBuddy/*/moli-skills`）。
+
+> 只改源目录（`~/.workbuddy/skills/`）。直接改另两份，会被下次同步覆盖。
 
 ---
 
