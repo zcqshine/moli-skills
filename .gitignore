@@ -12,3 +12,6 @@ skills/moli-e2e-test/e2e/reports/*
 !skills/moli-e2e-test/e2e/reports/.gitkeep
 skills/moli-e2e-test/e2e/screenshots/*
 !skills/moli-e2e-test/e2e/screenshots/.gitkeep
+
+# 本地维护脚本（仅存在于作者开发机，不随仓库分发）
+scripts/

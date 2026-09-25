@@ -326,43 +326,17 @@ cp -R skills/* ~/.workbuddy/skills/
 
 ## 维护：三副本同步
 
-本项目在开发机上同时存在三份 skill 副本，**改完代码必须一起同步**，否则会静默漂移（各份跑不同版本，且不易察觉）：
+作者开发机上同时存在三份 skill 副本，**改代码只改源目录，改完一起同步**，否则会静默漂移（各份跑不同版本，且不易察觉）：
 
 | # | 位置 | `agent_created` | 角色 |
 |---|---|---|---|
 | 1 | `~/.workbuddy/skills/<skill>` | 保留 | **唯一真源**，改代码只改这里 |
 | 2 | `~/.agents/skills/<skill>` | 保留 | agents 分发副本 |
-| 3 | `<本仓库>/skills/<skill>` | 去掉 | 对外分发副本 |
+| 3 | `<本仓库>/skills/<skill>` | 去掉 | 对外分发副本（即你在仓库里看到的这一份） |
 
-`scripts/sync-moli-skills.sh` 把「同步 + 标记处理 + 一致性校验」做成一条命令：
+同步由维护者本地的 `sync-moli-skills` 脚本完成（`rsync` 同步内容 + `SKILL.md` 按「去掉 `agent_created` 后的正文」单独比对 + 同步后校验全量内容/正文/标记状态/`run.sh` 执行位）。该脚本属个人开发机工具，**不在本仓库内**。
 
-```bash
-# 同步默认 skill（moli-e2e-test）到另两份
-bash scripts/sync-moli-skills.sh
-
-# 只检查是否漂移，不改动（有漂移则退出码 1，可进 CI）
-bash scripts/sync-moli-skills.sh --check
-
-# 预览将要同步/删除的内容
-bash scripts/sync-moli-skills.sh --dry-run
-
-# 同步全部 moli-* skill，并提交推送到 GitHub
-bash scripts/sync-moli-skills.sh --all --git
-
-# 软链后一条命令搞定
-ln -sf "$PWD/scripts/sync-moli-skills.sh" ~/.local/bin/sync-moli-skills
-sync-moli-skills --all --git
-```
-
-脚本会做的事：
-
-- `rsync -a --delete --checksum` 同步内容（排除 `node_modules`、`e2e/`、`moli-reports/` 等运行产物与依赖），目标端多余文件会被删除；
-- `SKILL.md` **单独处理，不走 rsync 直传**：只比「去掉 `agent_created` 后的正文」，正文真变了才重写，再按目标加/去标记——避免每次运行都无谓重写、以及 dry-run 谎报变更；
-- 同步后自动校验：全量内容比对 + `SKILL.md` 正文比对 + 标记状态 + `run.sh` 执行位；任一项不过即非零退出码。
-
-可用 `--repo <dir>` 或环境变量 `MOLI_SKILLS_REPO` 指定镜像仓库路径（默认自动探测 `$HOME/WorkBuddy/*/moli-skills`）。
-
-> 只改源目录（`~/.workbuddy/skills/`）。直接改另两份，会被下次同步覆盖。
+> 因此本仓库的 `skills/<skill>/` 是**自动生成的镜像**：直接改这里的文件，会被下一次同步覆盖。要改 skill，请在 issue / PR 里说明意图，或改源目录后同步。
 
 ---
 
