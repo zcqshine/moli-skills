@@ -257,5 +257,23 @@ export default function register(session) {
       await t.expect.ok(blankPageHint('about:blank').includes('goto'), 'about:blank 应提示自行 goto');
       await t.expect.ok(blankPageHint('http://localhost:3000/crm') === '', '真实页面不应触发空白页提示');
     });
+
+    session.it('诊断器：可见元素包围盒全 0×0（冻结树过期）应提示截图重建', async (t) => {
+      const { diagnoseSelector } = await load('./selector-doctor.mjs');
+      await t.page.setContent('<div id="old">老内容</div>');
+      // 触发 Moli 冷启动建立布局快照（首次几何读数）
+      await t.page.evaluate(() => document.querySelector('#old').getBoundingClientRect());
+      // 快照建立后插入的新元素不在快照里 → 可见但包围盒 0×0（Moli 实测行为）
+      await t.page.evaluate(() => {
+        const d = document.createElement('div');
+        d.id = 'late';
+        d.textContent = '后插入的元素';
+        document.body.appendChild(d);
+      });
+      const d = await diagnoseSelector(t.page, '#late', { fnName: '探针' });
+      await t.expect.ok(d.includes('0×0'), '应指出包围盒 0×0，实际: ' + d);
+      await t.expect.ok(/冻结树|布局快照/.test(d), '应解释冻结树机制，实际: ' + d);
+      await t.expect.ok(d.includes('screenshot'), '应给出截图重建的改法，实际: ' + d);
+    });
   });
 }

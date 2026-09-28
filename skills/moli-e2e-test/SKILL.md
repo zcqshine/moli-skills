@@ -165,11 +165,24 @@ moli-e2e-test/
 
 ## 关键注意（实测坑）
 
-- **Moli 布局特性**：无显式尺寸的元素（如仅含文本的 `div`）可能返回 0×0 包围盒，
-  使原生 `isVisible()/click()` 误判。**用 `t.expect.*` 与 `t.isShown`**，勿用裸 `isVisible()`。
+- **Moli Layout 冻结树机制（实测 + 官方文档确认，决定哪些读数可信）**：Moli 不主动 layout。
+  默认 `LayoutPolicy::Mock`（几何是假值）；`--layout` 启用 OnDemand：首次几何读数触发冷启动
+  并**冻结**布局快照，此后 DOM 变更**不会**自动重建——
+  - DOM 变更后 `getBoundingClientRect` 返回**旧值**；快照里不存在的新元素（刚打开的弹窗、
+    后插入的节点）→ **0×0**（overlay 全 0×0 的根因）；
+  - **innerText 在 DOM 变更后返回空字符串**（不是旧值）——文本断言必须用 textContent
+    （框架 `t.expect.text` 已用 textContent）；
+  - `checkVisibility` / `getComputedStyle` 走 style 计算，**不依赖 layout**，始终可靠
+    （`t.isShown` / `t.expect.*` 基于此——「不过冻结树的都可信」）；
+  - **截图会重建并替换冻结树**：「截图前 0×0、截图后正常」的根因。注意诊断截图有副作用
+    （把过期布局「修好」），排障时**先测量再截图**；
+  - 见到「所有可见元素都是 100×20」= serve 忘带 `--layout`（Mock 模式）。
+  **用 `t.expect.*` 与 `t.isShown`**（不经过冻结树）；坐标/hit-test 类操作前若 DOM 变过，
+  先 `t.page.screenshot()` 重建再做。诊断器已能自动识别这两种异常（见 `selector-doctor.mjs`）。
   详见 [references/ui-selectors.md](references/ui-selectors.md)。
 - **Overlay 浮层（dialog/drawer/dropdown popper/select 选项/message-box/toast）在 Moli 下几乎
-  全是 0×0**：坐标点击、`:visible` 伪类、hit-test 全部失效，拟人点击会打偏到 (0,0) 或别的元素。
+  全是 0×0**——根因即上面的冻结树机制：浮层是 DOM 变更后新出现的元素，不在布局快照里。
+  坐标点击、`:visible` 伪类、hit-test 全部失效，拟人点击会打偏到 (0,0) 或别的元素。
   **一律用 DOM 级交互**：直接 `import * as ov from '<skill目录>/scripts/overlay-helpers.mjs'`
   （domClick / rowClick / domType / buttonDisabled / expectToast / hoverDropdown）。
   hover 型 el-dropdown 打开须 `ov.hoverDropdown`（mouseenter 打在 `.el-tooltip__trigger` 上）。
@@ -183,8 +196,9 @@ moli-e2e-test/
   每例开头必须自行 `t.human.goto(...)`。忘了时失败信息会提示 about:blank 根因，
   且**不再产出误导性的全白截图**。
 - **失败信息自带选择器诊断**：断言/等待失败时，错误里会直接给出「当前 URL + 匹配几个元素 +
-  是根本不在 DOM / 被哪个祖先以什么方式隐藏 / 可见候选的实际文本」，不需要再手工 dump。
-  诊断实现见 `scripts/selector-doctor.mjs`（也可在自定义断言里手动调用）。
+  是根本不在 DOM / 被哪个祖先以什么方式隐藏 / 可见候选的实际文本 / 包围盒异常（冻结树过期
+  或 Mock 模式）」，不需要再手工 dump。诊断实现见 `scripts/selector-doctor.mjs`
+  （也可在自定义断言里手动调用）。
 - **首跑前先写最小探针**：新页面/新组件集，先用裸 Playwright 脚本逐个验证交互原语
   （点击、选项、输入、toast 读取）在 Moli 下确实生效，再全量编排 spec——否则会把
   「用例假设不成立」误判成「功能缺陷」，白跑多轮。
@@ -194,7 +208,8 @@ moli-e2e-test/
 - **服务要常驻**：短命 shell 里 `moli serve &` 会被回收导致后续 502。
   `run.sh` 已处理；手工起服务时用 `nohup ... &`。
 - **`--layout`**：截图、坐标点击、PDF 需要。`run.sh` 仅在**自己启动服务**时带上；若你已手工
-  `moli serve`（不带 `--layout`），须自行加 `--layout` 重启，否则截图/坐标点击会静默失效。
+  `moli serve`（不带 `--layout`），须自行加 `--layout` 重启——否则截图直接报错
+  `renderer layout is disabled`，所有元素几何是 100×20 的确定性假值（诊断器会提示）。
 - **别用固定 `sleep`**：等待交给 `t.expect.*` 的轮询（已内置）。
 - **文案断言归一化空白**：框架已做 trim+折叠空格；自写断言也要。
 

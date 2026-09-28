@@ -8,6 +8,9 @@
  *   ③ 在 DOM 但被某个祖先以 display:none / visibility:hidden / opacity:0 隐藏
  *      （折叠的 el-sub-menu、未展开的下拉、v-show 关闭的抽屉，都属此类）
  *   ④ 在 DOM 且可见，但没有一个元素的文本匹配传入的 text
+ *   ⑤ 在 DOM 且可见但包围盒全 0×0 → Moli 布局冻结树过期（DOM 刚变更，
+ *      新元素不在布局快照里；提示先截图重建再做坐标类操作）
+ *   ⑥ 可见元素包围盒全部 100×20 → 疑似 Mock 布局模式（serve 未带 --layout）
  *
  * 用法：断言失败信息里已自动带上诊断；也可在 spec 里手动调用：
  *   import { diagnoseSelector } from '<skill目录>/scripts/selector-doctor.mjs'
@@ -108,7 +111,7 @@ const PROBE = ([s, tx]) => {
   } catch (e) {
     return { parseError: String((e && e.message) || e) };
   }
-  const out = { total: els.length, shown: [], hidden: [], texts: [], textsAll: [], collapsedAncestor: null };
+  const out = { total: els.length, shown: [], hidden: [], texts: [], textsAll: [], collapsedAncestor: null, rects: [] };
   for (const el of els.slice(0, 20)) {
     let n = el;
     let hide = null;
@@ -138,10 +141,44 @@ const PROBE = ([s, tx]) => {
     } else {
       out.shown.push(brief(el));
       out.texts.push(txt);
+      // 顺带收集几何：OnDemand 模式下读 rect 复用冻结树（不会重建），无副作用；
+      // Mock 模式下返回确定性假值——两种异常模式都能据此识别
+      try {
+        const rc = el.getBoundingClientRect();
+        out.rects.push(`${Math.round(rc.width)}x${Math.round(rc.height)}`);
+      } catch {
+        out.rects.push('?');
+      }
     }
   }
   return out;
 };
+
+/**
+ * 几何诊断：元素可见但包围盒可疑的两种已知模式（均实测）。
+ * ① 可见元素包围盒全部 0×0 → 布局冻结树过期（DOM 刚变更，新元素不在快照里）
+ * ② 可见元素包围盒全部 100×20 → Mock 布局模式（moli serve 未带 --layout）
+ * 注意：读 rect 只复用冻结树、不会重建它，因此本诊断不会掩盖过期问题。
+ */
+function geometryHints(r) {
+  const rects = r.rects || [];
+  if (!rects.length) return [];
+  const hints = [];
+  if (rects.every((x) => x === '0x0')) {
+    hints.push('  · ⚠ 可见元素包围盒全部 0×0 → 大概率「布局冻结树过期」：Moli 不主动 layout，');
+    hints.push('    DOM 变更（打开弹窗/切 tab/插入节点）后布局快照不会自动重建，新元素量出来就是 0×0，');
+    hints.push('    坐标点击与 hit-test 不可信（文本/DOM 断言不受影响）。');
+    hints.push('    改法: 先 await t.page.screenshot() 重建布局快照，再做坐标类操作。');
+  } else {
+    const uniq = [...new Set(rects)];
+    if (uniq.length === 1 && uniq[0] === '100x20' && rects.length >= 2) {
+      hints.push('  · ⚠ 可见元素包围盒全部是 100×20 → 疑似 Mock 布局模式（moli serve 未带 --layout）：');
+      hints.push('    所有元素返回确定性假几何，截图会直接报错 "renderer layout is disabled"。');
+      hints.push('    改法: 用 moli serve --layout 重启 CDP 服务（run.sh 自启的服务已带）。');
+    }
+  }
+  return hints;
+}
 
 /**
  * 生成一段「为什么找不到」的可读诊断。永不抛异常（自身出错也会返回说明文本）。
@@ -226,6 +263,7 @@ export async function diagnoseSelector(page, sel, { text = null, fnName = '', pr
   if (text != null) {
     lines.push(`  · 匹配 ${r.total} 个元素、其中 ${r.shown.length} 个可见，但没有一个的文本包含 "${text}"`);
     lines.push(`  · 可见候选的实际文本: ${JSON.stringify(r.texts.slice(0, 8))}`);
+    lines.push(...geometryHints(r));
     return lines.join('\n');
   }
 
@@ -233,6 +271,7 @@ export async function diagnoseSelector(page, sel, { text = null, fnName = '', pr
     `  · 匹配 ${r.total} 个元素，可见 ${r.shown.length} 个${r.hidden.length ? `，另 ${r.hidden.length} 个被隐藏` : ''}`,
   );
   if (r.hidden.length) lines.push(`  · 隐藏示例: ${r.hidden[0].by} 的 ${r.hidden[0].why}`);
+  lines.push(...geometryHints(r));
   return lines.join('\n');
 }
 

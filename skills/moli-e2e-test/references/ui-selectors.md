@@ -38,30 +38,44 @@
 
 > Element Plus 的 link 按钮是 `.is-link`（不是已废弃的 `.el-button--link`）。
 
-## Moli 布局特性（实测，务必知道）
+## Moli Layout 冻结树机制（实测 + 官方文档确认，决定哪些读数可信）
 
-Moli 是「结构优先、按需渲染」的引擎，默认布局较简化。实测发现：
+Moli **不主动 layout**。默认 `LayoutPolicy::Mock`——几何是确定性假值，没有真实布局；
+`--layout` 启用 OnDemand：首次几何读数触发冷启动并把布局**冻结**为快照（FrozenLayoutTree），
+此后 DOM 变更**不会**自动重建快照。逐条实测结论：
 
-- **无显式尺寸的元素可能返回 0×0 包围盒**，即使它已经 `display:block` 且有文本。
-  例如仅有文本的 `<div id="ok">`，其 `getBoundingClientRect()` 恒为 `{w:0,h:0}`。
-- 后果：Playwright 原生的 `locator.isVisible()` **会误判为不可见**，`locator.click()`
-  也可能因「不可见」而超时。
-- 有显式尺寸的元素（如 `input{width:300px}`、带 padding 的按钮）不受影响。
+- **DOM 变更后，`getBoundingClientRect` 返回旧值**：实测把元素 width 改成 333px 后再读，
+  仍是旧快照的 1880×22（官方："Ordinary geometry reads may reuse it even if the page has changed"）。
+- **快照里不存在的新元素 → 0×0**：实测先建快照再 `appendChild` 新节点，新元素 rect 恒为
+  `{w:0,h:0}`——**teleport 浮层（dialog/drawer/popper）打开后全是 0×0 的根因**。
+- **innerText 在 DOM 变更后返回空字符串**（不是旧值也不是新值，实测）；textContent 是纯
+  DOM 文本，永远正确。**文本断言必须走 textContent**（框架 `t.expect.text` 已用）。
+- **`checkVisibility` / `getComputedStyle` 走 style 计算，不依赖 layout**：display:none /
+  visibility:hidden / opacity:0 的判定在 Mock 模式下也正确——**「不过冻结树的都可信」**。
+- **截图会重建并替换冻结树**：「截图前 0×0、截图后一切正常」的根因（实测 0x0 → 640x608）。
+  排障时注意诊断截图的副作用——它会把过期布局「修好」，**先测量再截图**。
+- **Mock 模式的特征**：所有可见元素 rect 统一 **100×20**（确定性假几何），且截图直接报错
+  `Page.captureScreenshot is not supported: renderer layout is disabled; start Moli with --layout`。
+  见到「所有元素一样大」就查 serve 参数。
 
 **本框架的应对（已内置，直接受益）**：
 
-- `expect.visible / hidden` 改用「计算样式 + 祖先链」判定（不依赖 `checkVisibility`，
-  因为它的选项可能被引擎忽略），不依赖包围盒 → 规避该问题。
+- `expect.visible / hidden` 与 `t.isShown` 用「计算样式 + 祖先链」判定，不依赖包围盒
+  → 规避冻结树问题。
 - `human.click / type` 在原生点击失败时自动回退 `force`。
-- 因此用例里**优先用 `t.expect.*` 而不是裸 `locator.isVisible()`**。
+- 选择器诊断器（`selector-doctor.mjs`）已内置两种几何异常的识别：可见元素全 0×0 → 提示
+  「冻结树过期，先截图重建」；可见元素全 100×20 → 提示「Mock 模式，加 --layout 重启」。
+- 因此用例里**优先用 `t.expect.*` 而不是裸 `locator.isVisible()`**；坐标/hit-test 类操作前
+  若 DOM 变过，先 `await t.page.screenshot()` 重建快照。
 
 **若你在用例里绕不开原生 API**，用 `t.isShown(sel)`（布局无关）替代 `isVisible()`。
 
 ## Overlay 实战手册（dialog / drawer / dropdown / select / message-box / toast）
 
-实测结论：**teleport 到 body 的浮层在 Moli 下几乎全部 0×0**（连带的后果——`:visible`
-匹配不到、坐标点击打偏到 (0,0) 或被别的元素拦截 hit-test、`human.click` 的 force 回退
-也点不中）。唯一可靠路径是 **DOM 级 `el.click()` + CSS 可见性轮询**，已封装为
+实测结论：**teleport 到 body 的浮层在 Moli 下几乎全部 0×0**——根因是上面的冻结树机制：
+浮层是 DOM 变更后新出现的元素，不在布局快照里（连带的后果——`:visible` 匹配不到、
+坐标点击打偏到 (0,0) 或被别的元素拦截 hit-test、`human.click` 的 force 回退也点不中）。
+唯一可靠路径是 **DOM 级 `el.click()` + CSS 可见性轮询**（不经过冻结树），已封装为
 `scripts/overlay-helpers.mjs`，spec 里按绝对路径引入：
 
 ```js
@@ -114,6 +128,8 @@ harness 在每个 `session.it()` 内部都会 `context.newPage()`：**登录态�
 |---|---|---|
 | `匹配 0 个元素 → 元素根本不在 DOM` | 未 goto / 未渲染 / 选择器写错 | 看同一行的 `当前 URL`；若是 `about:blank` 即没 goto |
 | `匹配 N 个元素，但全部不可见` + `最近隐藏原因: xxx 的 display:none` | 在 DOM 但被祖先隐藏（折叠菜单、未展开的下拉、v-show 关闭的抽屉） | 先展开/触发；或改用 `ov.*` 的 DOM 级交互 |
+| `可见元素包围盒全部 0×0 → 布局冻结树过期` | 元素可见但在布局快照外（刚打开的弹窗/新插入节点）；坐标与 hit-test 不可信 | 先 `await t.page.screenshot()` 重建快照再做坐标操作；文本/DOM 断言不受影响 |
+| `可见元素包围盒全部是 100×20 → 疑似 Mock 布局模式` | `moli serve` 忘带 `--layout`，所有几何是假值 | 用 `moli serve --layout` 重启（`run.sh` 自启的服务已带） |
 | `没有一个的文本包含 "xxx"` + `可见候选的实际文本: [...]` | 元素在且可见，但文案与预期不符 | 按列出的真实文案修正断言或选择器 |
 | `语法非法：:has-text() … 改法：…` | 选择器含 Playwright 私有语法 | 按给出的改法改 |
 
