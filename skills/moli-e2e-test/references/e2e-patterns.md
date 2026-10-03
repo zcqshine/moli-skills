@@ -94,7 +94,7 @@ PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install playwright   # 不下载浏览器
 bash scripts/run.sh ./e2e/specs --base-url ...              # 跑用例
 ```
 
-**在 CI 里锁定 Moli 版本**：`run.sh` 默认锚定 `MOLI_VERSION`（当前 `v1.1.9`），
+**在 CI 里锁定 Moli 版本**：`run.sh` 默认锚定 `MOLI_VERSION`（当前 `v1.1.12`），
 安装脚本先下载到临时文件再执行；可传 `MOLI_INSTALLER_SHA256` 校验，或设
 `MOLI_INSTALL_STRICT=1` 强制要求校验。
 

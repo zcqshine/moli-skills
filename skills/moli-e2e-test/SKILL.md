@@ -14,7 +14,7 @@ description: 用 Moli 无头浏览器做网页 E2E 自动化测试：拟人操�
 ## 前置条件
 
 - **Node.js ≥ 20**（`playwright` 1.63 的 `engines` 要求；`run.sh` 会自动挑选可用版本）。
-- **`moli`**：缺失时 `run.sh` 会自动安装（默认锚定版本 `v1.1.9`，可用环境变量 `MOLI_VERSION=latest`
+- **`moli`**：缺失时 `run.sh` 会自动安装（默认锚定版本 `v1.1.12`，可用环境变量 `MOLI_VERSION=latest`
   或指定 tag 覆盖；也可传 `MOLI_INSTALLER_SHA256` 校验安装脚本）。
 - **playwright**：首次运行会 `npm install playwright`（跳过浏览器下载——Moli 即浏览器），需要网络。
 

@@ -20,7 +20,7 @@
 # --e2e-dir / --report-dir / --shots-dir / --no-human / --shots / --timeout / --list）。
 #
 # 环境变量：
-#   MOLI_VERSION             安装 moli 时锚定的版本，默认 v1.1.9（设为 latest 可拉最新）
+#   MOLI_VERSION             安装 moli 时锚定的版本，默认 v1.1.12（设为 latest 可拉最新）
 #   MOLI_INSTALLER_SHA256    若提供，则校验安装脚本 sha256，不匹配即中止
 #   MOLI_INSTALL_STRICT=1    严格模式：未提供 SHA256 时拒绝安装
 #   MOLI_CDP / REPORT_DIR / SHOTS_DIR / E2E_DIR / MOLI_HUMAN / MOLI_SHOTS / MOLI_TIMEOUT
@@ -168,7 +168,7 @@ find_moli() {
   return 1
 }
 
-MOLI_VERSION="${MOLI_VERSION:-v1.1.9}"   # 默认锚定已验证版本，避免静默换引擎
+MOLI_VERSION="${MOLI_VERSION:-v1.1.12}"   # 默认锚定已验证版本，避免静默换引擎
 
 install_moli() {
   local ver="$MOLI_VERSION" url tmp sum rc
