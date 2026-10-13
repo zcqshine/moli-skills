@@ -340,7 +340,7 @@ expect 超时附诊断、冻结树过期（包围盒 0×0）：
 | 3 | `~/.cc-switch/skills/<skill>` | 保留 | `~/.claude/skills/` 软链指向这一份 |
 | 4 | `<本仓库>/skills/<skill>` | 去掉 | 对外分发副本（即你在仓库里看到的这一份） |
 
-同步由仓库内的 `scripts/sync-moli-skills.sh` 完成。它用 `rsync` 同步内容，`SKILL.md` 按「去掉 `agent_created` 后的正文」单独比对。同步后校验全量内容、正文、标记状态和 `run.sh` 执行位。加 `--check` 可校验 agents、cc-switch、mirror 三条路径。
+同步由维护者本地的 `sync-moli-skills.sh` 完成。该脚本属个人开发机工具，**不随仓库分发**。它用 `rsync` 同步内容，`SKILL.md` 按「去掉 `agent_created` 后的正文」单独比对；同步后校验全量内容、正文、标记状态和 `run.sh` 执行位。脚本支持 `--check`，可校验 agents、cc-switch、mirror 三条路径。
 
 > 因此本仓库的 `skills/<skill>/` 是**自动生成的镜像**：直接改这里的文件，会被下一次同步覆盖。要改 skill，请在 issue / PR 里说明意图，或改源目录后同步。
 
