@@ -194,53 +194,38 @@ moli-e2e-test/
 
 ## 关键注意（实测坑）
 
-- **Moli Layout 冻结树机制（实测 + 官方文档确认，决定哪些读数可信）**：Moli 不主动 layout。
-  默认 `LayoutPolicy::Mock`（几何是假值）；`--layout` 启用 OnDemand：首次几何读数触发冷启动
-  并**冻结**布局快照，此后 DOM 变更**不会**自动重建——
-  - DOM 变更后 `getBoundingClientRect` 返回**旧值**；快照里不存在的新元素（刚打开的弹窗、
-    后插入的节点）→ **0×0**（overlay 全 0×0 的根因）；
-  - **innerText 在 DOM 变更后返回空字符串**（不是旧值）——文本断言必须用 textContent
-    （框架 `t.expect.text` 已用 textContent）；
-  - `checkVisibility` / `getComputedStyle` 走 style 计算，**不依赖 layout**，始终可靠
-    （`t.isShown` / `t.expect.*` 基于此——「不过冻结树的都可信」）；
-  - **截图会重建并替换冻结树**：「截图前 0×0、截图后正常」的根因。注意诊断截图有副作用
-    （把过期布局「修好」），排障时**先测量再截图**；
-  - 见到「所有可见元素都是 100×20」= serve 忘带 `--layout`（Mock 模式）。
-  **用 `t.expect.*` 与 `t.isShown`**（不经过冻结树）；坐标/hit-test 类操作前若 DOM 变过，
-  先 `t.page.screenshot()` 重建再做。诊断器已能自动识别这两种异常（见 `selector-doctor.mjs`）。
-  详见 [references/ui-selectors.md](references/ui-selectors.md)。
-- **Overlay 浮层（dialog/drawer/dropdown popper/select 选项/message-box/toast）在 Moli 下几乎
-  全是 0×0**——根因即上面的冻结树机制：浮层是 DOM 变更后新出现的元素，不在布局快照里。
-  坐标点击、`:visible` 伪类、hit-test 全部失效，拟人点击会打偏到 (0,0) 或别的元素。
-  **一律用 DOM 级交互**：直接 `import * as ov from '<skill目录>/scripts/overlay-helpers.mjs'`
-  （domClick / rowClick / domType / buttonDisabled / expectToast / hoverDropdown /
-  waitForShown / waitForGone / shownCount）。
-  hover 型 el-dropdown 打开须 `ov.hoverDropdown`（mouseenter 打在 `.el-tooltip__trigger` 上）。
-  完整范例见 [references/ui-selectors.md](references/ui-selectors.md) 的「Overlay 实战手册」小节。
-- **`:has-text()` / `:text()` / `:visible` 是 Playwright 私有伪类**：只能用于 locator；
-  传进 `page.evaluate` 里的 `querySelectorAll` 会抛 `DOMException`。evaluate 场景用纯 CSS +
-  单独的文本过滤参数。`ov.*` 已做**前置拦截**：误用时立刻抛出带改法的错误
-  （例：`ov.domClick` 收到 `text=xxx` → 提示「sel 只接受纯 CSS，文本走第二个参数」），
-  不会等到超时才报一个难懂的 DOMException。
-- **每个用例都是新页面**（`context.newPage()`）：登录态经 context 共享，但页面不继承，
-  每例开头必须自行 `t.human.goto(...)`。忘了时失败信息会提示 about:blank 根因，
-  且**不再产出误导性的全白截图**。
-- **失败信息自带选择器诊断**：断言/等待失败时，错误里会直接给出「当前 URL + 匹配几个元素 +
-  是根本不在 DOM / 被哪个祖先以什么方式隐藏 / 可见候选的实际文本 / 包围盒异常（冻结树过期
-  或 Mock 模式）」，不需要再手工 dump。诊断实现见 `scripts/selector-doctor.mjs`
-  （也可在自定义断言里手动调用）。
-- **首跑前先写最小探针**：新页面/新组件集，先用裸 Playwright 脚本逐个验证交互原语
-  （点击、选项、输入、toast 读取）在 Moli 下确实生效，再全量编排 spec——否则会把
-  「用例假设不成立」误判成「功能缺陷」，白跑多轮。
-- **共享 CDP 浏览器会攒残留 page**：自写探针脚本结束只 `browser.close()` 不会关 page，
-  累积若干后新导航超时假死。脚本收尾必须 `page.close()`；排障用
-  `curl -s localhost:9222/json/list` 数 targets，`/json/close/<id>` 清理。
-- **服务要常驻**：短命 shell 里 `moli serve &` 会被回收导致后续 502。
-  `run.sh` 已处理；手工起服务时用 `nohup ... &`。
-- **`--layout`**：截图、坐标点击、PDF 需要。`run.sh` 仅在**自己启动服务**时带上；若你已手工
-  `moli serve`（不带 `--layout`），须自行加 `--layout` 重启——否则截图直接报错
-  `renderer layout is disabled`，所有元素几何是 100×20 的确定性假值（诊断器会提示）。
-- **别用固定 `sleep`**：等待交给 `t.expect.*` 的轮询（已内置）。
-- **文案断言归一化空白**：框架已做 trim+折叠空格；自写断言也要。
+> **开工前必读** [references/ui-selectors.md](references/ui-selectors.md) 的「冻结树机制」与「Overlay 实战手册」两节——下面 A 类是它们的摘要，完整机制以该文件为准。
 
-更多排障见 [references/e2e-patterns.md](references/e2e-patterns.md)。
+- **Moli Layout 冻结树机制**（决定哪些读数可信）：Moli 不主动 layout。默认 `LayoutPolicy::Mock`
+  （几何全是假值）；`--layout` 启用 OnDemand——**首次几何读数触发冷启动并冻结布局快照，
+  此后 DOM 变更不会自动重建**。三条后果：
+  - **几何不可信**：DOM 变更后 `getBoundingClientRect` 返回旧值；快照里不存在的新元素（刚打开的
+    弹窗、后插入的节点）→ **0×0**；serve 忘带 `--layout` 时所有元素是 **100×20** 确定性假值。
+  - **innerText 不可信**：DOM 变更后返回**空字符串**（不是旧值）——文本断言用 textContent
+    （`t.expect.text` 已用）。
+  - **不过冻结树的都不可信**：`checkVisibility` / `getComputedStyle` 走 style 计算、不依赖 layout，
+    始终可靠（`t.isShown` / `t.expect.*` 基于此）。**截图会重建并替换冻结树**——这正是「截图前
+    0×0、截图后正常」的根因，且重建有副作用，故排障顺序固定：**先测量再截图**。
+  → 断言一律用 `t.expect.*` / `t.isShown`；坐标 / hit-test 类操作前若 DOM 变过，先
+  `t.page.screenshot()` 重建。诊断器已能自动识别上述异常（`scripts/selector-doctor.mjs`）。
+- **Overlay 浮层（dialog/drawer/dropdown popper/select 选项/message-box/toast）在 Moli 下几乎
+  全是 0×0**——根因即上面的冻结树：浮层是 DOM 变更后新出现的元素，不在布局快照里。坐标点击、
+  `:visible` 伪类、hit-test 全部失效，拟人点击会打偏到 (0,0) 或别的元素。**一律用 DOM 级交互**：
+  `import * as ov from '<skill目录>/scripts/overlay-helpers.mjs'`（domClick / rowClick / domType /
+  buttonDisabled / expectToast / hoverDropdown / waitForShown / waitForGone / shownCount）。
+  hover 型 el-dropdown 须 `ov.hoverDropdown`（mouseenter 打在 `.el-tooltip__trigger` 上）。
+  完整范例见 [references/ui-selectors.md](references/ui-selectors.md) 的「Overlay 实战手册」。
+- **每个用例都是新页面**（`context.newPage()`）：登录态经 context 共享，页面不继承——每例开头
+  必须 `t.human.goto(...)`。忘了时失败信息会报 about:blank 根因，且不再产出误导性的全白截图。
+- **已被框架 / 脚本自动兜住，无需手动应对**：`run.sh` 自动起常驻服务并带 `--layout`（仅手工
+  `moli serve` 才需自己加，漏了报 `renderer layout is disabled`）；断言失败自动附选择器诊断
+  （当前 URL + 匹配几个元素 + 隐藏原因 + 可见候选文本，见 `scripts/selector-doctor.mjs`）；
+  `t.expect.*` 内置轮询（**别写固定 sleep**）且已 trim + 折叠空白；`ov.*` 误用 `:has-text()` /
+  `:visible` 等 Playwright 私有伪类时**前置拦截**并在报错里给出改法（不会等到超时抛难懂的
+  `DOMException`）。
+- **首跑前先写最小探针**：新页面 / 新组件集，先用裸 Playwright 逐个验证交互原语（点击、选型、
+  输入、toast 读取）确实生效，再全量编排——否则会把「用例假设不成立」误判成「功能缺陷」。
+  自写探针收尾必须 `page.close()`：共享 CDP 只 `browser.close()` 会攒残留 page，累积后新导航
+  超时假死（排障：`curl -s localhost:9222/json/list` 数 targets，`/json/close/<id>` 清理）。
+
+更多排障见 [references/e2e-patterns.md](references/e2e-patterns.md) 的 **Troubleshooting 表（20 条 · 症状 → 原因 → 一线修复 → 仍失败兜底）**。
