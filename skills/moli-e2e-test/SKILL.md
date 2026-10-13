@@ -179,20 +179,18 @@ moli-e2e-test/
 
 ## 失败 → 处置（if-then 速查）
 
-用例失败先在此表定位。表里没有的，查 [references/e2e-patterns.md](references/e2e-patterns.md) 的 **Troubleshooting 表（20 条症状速查）**。
+用例失败先按下表定位；表里没有的见文末指引。
 
 | 症状（如果…） | 一线修复 | 仍失败兜底 |
 |---|---|---|
 | 断言全部「元素不存在」，且 `page.url()` 是 `about:blank` | 用例开头补 `await t.human.goto('/路径')` | 检查 `--base-url` 是否漏传或指错端口 |
-| 浮层（dialog / drawer / dropdown）里点不中、`:visible` 匹配不到 | 改用 `ov.domClick` / `ov.domType` / `ov.expectToast` 等 DOM 级 API | 先 `t.page.screenshot()` 重建冻结树再试；仍失败读报错里的 `selector-doctor` 诊断行 |
+| 浮层（dialog / drawer / dropdown）里点不中、`:visible` 匹配不到 | 改用 `ov.domClick` / `ov.domType` / `ov.expectToast` 等 DOM 级 API | 先 `t.page.screenshot()` 重建冻结树；仍失败读报错里的诊断行 |
 | 所有可见元素都是 100×20 的假几何 | serve 未带 `--layout`，重启时加上 | 确认 `run.sh` 没在复用你手工起的无 `--layout` 服务 |
-| 截图前元素 0×0、截图后正常 | 冻结树过期：**先测量再截图** | 排障顺序固定为「读断言 → 看诊断器 → 最后才截图」 |
 | `page.evaluate` 抛 `DOMException` | sel 去掉 `:has-text()` / `:visible`，文本走第二参数 | 直接换 `ov.*`（已做前置拦截，报错里带改法） |
-| 导航超时但 `curl :9222` 正常 | 共享 CDP 攒了残留 page：`curl -s :9222/json/list` 数 targets，逐个 `/json/close/<id>` | 探针脚本收尾补 `page.close()`；仍不行就重启 serve |
-| hover 型 el-dropdown 怎么都打不开 | 用 `ov.hoverDropdown`（mouseenter 打在 `.el-tooltip__trigger`） | 确认没把选择器写成 `.el-dropdown` 根元素 |
-| 首轮大面积失败，分不清是功能缺陷还是用例写错 | **探针先行**：先用最小裸 Playwright 脚本逐个验证交互原语 | 原语确认可用后再全量编排，否则会把「用例假设不成立」误判成「功能缺陷」 |
 
 **原则：先读诊断再猜。** 断言失败的报错已自带「当前 URL + 匹配几个元素 + 隐藏原因 + 可见候选文本」，照它分类，不要手工 dump DOM。
+
+> 上表 4 条是最高频入口。其余 16 类（截图全白、CDP 残留 page、hover dropdown、表格 hit-test、勾选框点不到、探针先行等）见 [references/e2e-patterns.md](references/e2e-patterns.md) 的 **Troubleshooting 表（20 条 · 症状 → 原因 → 一线修复 → 仍失败兜底）**。
 
 ## 关键注意（实测坑）
 
