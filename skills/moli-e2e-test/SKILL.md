@@ -9,14 +9,14 @@ description: 用 Moli 无头浏览器做网页 E2E 自动化测试：拟人操�
 真实页面，用拟人操作模拟真人点击/输入，验证模块功能与前端校验，一键产出报告。
 
 **核心事实**：Moli 替代的是浏览器引擎，不是测试框架。Playwright 照常用，只把 Chromium
-换成 Moli 的 CDP 端点——省内存、可无 GPU、适合 CI 小机器。即使调用方没有点名 Moli 也适用。
+换成 Moli 的 CDP 端点：省内存、可无 GPU、适合 CI 小机器。即使调用方没有点名 Moli 也适用。
 
 ## 前置条件
 
 - **Node.js ≥ 20**（`playwright` 1.63 的 `engines` 要求；`run.sh` 会自动挑选可用版本）。
 - **`moli`**：缺失时 `run.sh` 会自动安装（默认锚定版本 `v1.1.12`，可用环境变量 `MOLI_VERSION=latest`
   或指定 tag 覆盖；也可传 `MOLI_INSTALLER_SHA256` 校验安装脚本）。
-- **playwright**：首次运行会 `npm install playwright`（跳过浏览器下载——Moli 即浏览器），需要网络。
+- **playwright**：首次运行会 `npm install playwright`（跳过浏览器下载，Moli 即浏览器），需要网络。
 
 ## 何时用 
 
@@ -56,7 +56,7 @@ bash <skill目录>/scripts/run.sh init
 
 ## 高危动作闸门（🔴 命中即停，先向用户确认）
 
-用例会**真实驱动被测系统**——不是模拟、不是 dry-run。下列动作动手前必须先向用户确认，命中任一条就停下来说清情况，不要自行执行。
+用例会**真实驱动被测系统**，不是模拟、不是 dry-run。下列动作动手前必须先向用户确认，命中任一条就停下来说清情况，不要自行执行。
 
 | 🔴 触发条件 | 为什么危险 | 正确做法 |
 |---|---|---|
@@ -92,7 +92,7 @@ bash <skill目录>/scripts/run.sh init
 放到被测项目的 `e2e/specs/` 下，默认导出注册函数：
 
 > ⚠ **每个用例开头都要自己 `await t.human.goto('/路径')`**：harness 在每例内部
-> `context.newPage()`——登录态经 context 共享，但**页面不继承**，新页面从 `about:blank`
+> `context.newPage()`，登录态经 context 共享，但**页面不继承**，新页面从 `about:blank`
 > 开始。忘了 goto 会表现为「所有断言都找不到元素」，框架已加守卫会直接提示。
 
 ```js
@@ -194,28 +194,28 @@ moli-e2e-test/
 
 ## 关键注意（实测坑）
 
-> **开工前必读** [references/ui-selectors.md](references/ui-selectors.md) 的「冻结树机制」与「Overlay 实战手册」两节——下面 A 类是它们的摘要，完整机制以该文件为准。
+> **开工前必读** [references/ui-selectors.md](references/ui-selectors.md) 的「冻结树机制」与「Overlay 实战手册」两节。下面 A 类是它们的摘要，完整机制以该文件为准。
 
 - **Moli Layout 冻结树机制**（决定哪些读数可信）：Moli 不主动 layout。默认 `LayoutPolicy::Mock`
-  （几何全是假值）；`--layout` 启用 OnDemand——**首次几何读数触发冷启动并冻结布局快照，
+  （几何全是假值）；`--layout` 启用 OnDemand：**首次几何读数触发冷启动并冻结布局快照，
   此后 DOM 变更不会自动重建**。三条后果：
   - **几何不可信**：DOM 变更后 `getBoundingClientRect` 返回旧值；快照里不存在的新元素（刚打开的
     弹窗、后插入的节点）→ **0×0**；serve 忘带 `--layout` 时所有元素是 **100×20** 确定性假值。
-  - **innerText 不可信**：DOM 变更后返回**空字符串**（不是旧值）——文本断言用 textContent
+  - **innerText 不可信**：DOM 变更后返回**空字符串**（不是旧值）。文本断言用 textContent
     （`t.expect.text` 已用）。
   - **不过冻结树的都不可信**：`checkVisibility` / `getComputedStyle` 走 style 计算、不依赖 layout，
-    始终可靠（`t.isShown` / `t.expect.*` 基于此）。**截图会重建并替换冻结树**——这正是「截图前
+    始终可靠（`t.isShown` / `t.expect.*` 基于此）。**截图会重建并替换冻结树**，这正是「截图前
     0×0、截图后正常」的根因，且重建有副作用，故排障顺序固定：**先测量再截图**。
   → 断言一律用 `t.expect.*` / `t.isShown`；坐标 / hit-test 类操作前若 DOM 变过，先
   `t.page.screenshot()` 重建。诊断器已能自动识别上述异常（`scripts/selector-doctor.mjs`）。
 - **Overlay 浮层（dialog/drawer/dropdown popper/select 选项/message-box/toast）在 Moli 下几乎
-  全是 0×0**——根因即上面的冻结树：浮层是 DOM 变更后新出现的元素，不在布局快照里。坐标点击、
+  全是 0×0**。根因即上面的冻结树：浮层是 DOM 变更后新出现的元素，不在布局快照里。坐标点击、
   `:visible` 伪类、hit-test 全部失效，拟人点击会打偏到 (0,0) 或别的元素。**一律用 DOM 级交互**：
   `import * as ov from '<skill目录>/scripts/overlay-helpers.mjs'`（domClick / rowClick / domType /
   buttonDisabled / expectToast / hoverDropdown / waitForShown / waitForGone / shownCount）。
   hover 型 el-dropdown 须 `ov.hoverDropdown`（mouseenter 打在 `.el-tooltip__trigger` 上）。
   完整范例见 [references/ui-selectors.md](references/ui-selectors.md) 的「Overlay 实战手册」。
-- **每个用例都是新页面**（`context.newPage()`）：登录态经 context 共享，页面不继承——每例开头
+- **每个用例都是新页面**（`context.newPage()`）：登录态经 context 共享，页面不继承。每例开头
   必须 `t.human.goto(...)`。忘了时失败信息会报 about:blank 根因，且不再产出误导性的全白截图。
 - **已被框架 / 脚本自动兜住，无需手动应对**：`run.sh` 自动起常驻服务并带 `--layout`（仅手工
   `moli serve` 才需自己加，漏了报 `renderer layout is disabled`）；断言失败自动附选择器诊断
@@ -224,7 +224,7 @@ moli-e2e-test/
   `:visible` 等 Playwright 私有伪类时**前置拦截**并在报错里给出改法（不会等到超时抛难懂的
   `DOMException`）。
 - **首跑前先写最小探针**：新页面 / 新组件集，先用裸 Playwright 逐个验证交互原语（点击、选型、
-  输入、toast 读取）确实生效，再全量编排——否则会把「用例假设不成立」误判成「功能缺陷」。
+  输入、toast 读取）确实生效，再全量编排，否则会把「用例假设不成立」误判成「功能缺陷」。
   自写探针收尾必须 `page.close()`：共享 CDP 只 `browser.close()` 会攒残留 page，累积后新导航
   超时假死（排障：`curl -s localhost:9222/json/list` 数 targets，`/json/close/<id>` 清理）。
 

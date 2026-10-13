@@ -11,7 +11,7 @@
 7. 最后才用：`nth-child`、深层 CSS 链、依赖兄弟顺序
 
 > ⚠ 第 4、5 条是 **Playwright locator 专属语法**（只能用于 `t.human.*` / `t.page.locator` /
-> `t.expect.count`）。传进 `page.evaluate` 里的 `querySelectorAll` 会抛 `DOMException`——
+> `t.expect.count`）。传进 `page.evaluate` 里的 `querySelectorAll` 会抛 `DOMException`：
 > `ov.*` 的 sel 参数**只收纯 CSS**，文本走单独参数。详见下文「Overlay 实战手册」。
 
 **限定到就近容器**，避免全局匹配到多个同名元素：
@@ -40,20 +40,20 @@
 
 ## Moli Layout 冻结树机制（实测 + 官方文档确认，决定哪些读数可信）
 
-Moli **不主动 layout**。默认 `LayoutPolicy::Mock`——几何是确定性假值，没有真实布局；
+Moli **不主动 layout**。默认 `LayoutPolicy::Mock`：几何是确定性假值，没有真实布局；
 `--layout` 启用 OnDemand：首次几何读数触发冷启动并把布局**冻结**为快照（FrozenLayoutTree），
 此后 DOM 变更**不会**自动重建快照。逐条实测结论：
 
 - **DOM 变更后，`getBoundingClientRect` 返回旧值**：实测把元素 width 改成 333px 后再读，
   仍是旧快照的 1880×22（官方："Ordinary geometry reads may reuse it even if the page has changed"）。
 - **快照里不存在的新元素 → 0×0**：实测先建快照再 `appendChild` 新节点，新元素 rect 恒为
-  `{w:0,h:0}`——**teleport 浮层（dialog/drawer/popper）打开后全是 0×0 的根因**。
+  `{w:0,h:0}`，**teleport 浮层（dialog/drawer/popper）打开后全是 0×0 的根因**。
 - **innerText 在 DOM 变更后返回空字符串**（不是旧值也不是新值，实测）；textContent 是纯
   DOM 文本，永远正确。**文本断言必须走 textContent**（框架 `t.expect.text` 已用）。
 - **`checkVisibility` / `getComputedStyle` 走 style 计算，不依赖 layout**：display:none /
-  visibility:hidden / opacity:0 的判定在 Mock 模式下也正确——**「不过冻结树的都可信」**。
+  visibility:hidden / opacity:0 的判定在 Mock 模式下也正确，**「不过冻结树的都可信」**。
 - **截图会重建并替换冻结树**：「截图前 0×0、截图后一切正常」的根因（实测 0x0 → 640x608）。
-  排障时注意诊断截图的副作用——它会把过期布局「修好」，**先测量再截图**。
+  排障时注意诊断截图的副作用：它会把过期布局「修好」，**先测量再截图**。
 - **Mock 模式的特征**：所有可见元素 rect 统一 **100×20**（确定性假几何），且截图直接报错
   `Page.captureScreenshot is not supported: renderer layout is disabled; start Moli with --layout`。
   见到「所有元素一样大」就查 serve 参数。
@@ -72,8 +72,8 @@ Moli **不主动 layout**。默认 `LayoutPolicy::Mock`——几何是确定性�
 
 ## Overlay 实战手册（dialog / drawer / dropdown / select / message-box / toast）
 
-实测结论：**teleport 到 body 的浮层在 Moli 下几乎全部 0×0**——根因是上面的冻结树机制：
-浮层是 DOM 变更后新出现的元素，不在布局快照里（连带的后果——`:visible` 匹配不到、
+实测结论：**teleport 到 body 的浮层在 Moli 下几乎全部 0×0**。根因是上面的冻结树机制：
+浮层是 DOM 变更后新出现的元素，不在布局快照里（连带后果：`:visible` 匹配不到、
 坐标点击打偏到 (0,0) 或被别的元素拦截 hit-test、`human.click` 的 force 回退也点不中）。
 唯一可靠路径是 **DOM 级 `el.click()` + CSS 可见性轮询**（不经过冻结树），已封装为
 `scripts/overlay-helpers.mjs`，spec 里按绝对路径引入：
@@ -82,7 +82,7 @@ Moli **不主动 layout**。默认 `LayoutPolicy::Mock`——几何是确定性�
 import * as ov from '/path/to/moli-e2e-test/scripts/overlay-helpers.mjs'
 
 // 表格行内按钮（横向滚动区拟人点击会打偏，一律 rowClick）
-await ov.rowClick(t, '客户A', 'button', '更多')
+await ov.rowClick(t, '客户 A', 'button', '更多')
 // dropdown 菜单项 / select 选项（popper 0×0）
 await ov.domClick(t, '.el-dropdown-menu__item', '释放到公海')
 await ov.domClick(t, '.el-dialog .el-select__wrapper')       // 展开
@@ -99,7 +99,7 @@ await ov.waitForGone(t, '.el-drawer')
 各库的具体坑（均实测）：
 
 - **hover 型 el-dropdown**：`human.hover` 需几何，0×0 下无效；且向 `.el-dropdown`
-  根元素 dispatch `mouseenter` **不生效**——必须打在 `.el-tooltip__trigger`（内层按钮）
+  根元素 dispatch `mouseenter` **不生效**，必须打在 `.el-tooltip__trigger`（内层按钮）
   上且 `bubbles: false`。用 `ov.hoverDropdown(t, '.el-drawer .el-dropdown')`。
 - **el-checkbox**：原生 `input` 是 `opacity:0`（视觉隐藏），会被 CSS 可见性过滤挡掉；
   点 `.el-checkbox` label 包裹层（浏览器 label 激活行为会转发给 input）。
@@ -112,7 +112,7 @@ await ov.waitForGone(t, '.el-drawer')
 ## 每个用例都是新页面（最容易踩的隐式行为）
 
 harness 在每个 `session.it()` 内部都会 `context.newPage()`：**登录态经 context 共享，
-但页面不共享**——上一例停在哪一页，下一例不会继承，新页面从 `about:blank` 开始。
+但页面不共享**。上一例停在哪一页，下一例不会继承，新页面从 `about:blank` 开始。
 
 - 每个用例**必须自己** `await t.human.goto('/路径')`（或 `t.page.setContent(html)`）；
 - 不存在「用例间共享页面状态」的隐式行为；需要登录态就写登录步骤，或复用 `storageState`；

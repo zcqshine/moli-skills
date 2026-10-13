@@ -51,7 +51,7 @@ moli fetch --wait-selector "main article" "URL"
 本 skill 已提供框架，用例只需注册、无需自建骨架：
 
 ```js
-// my.spec.mjs —— 用 scripts/run.sh 运行
+// my.spec.mjs：用 scripts/run.sh 运行
 import { chromium } from "playwright"; // 仅当需要裸 API 时才直接引入
 
 export default function register(session) {
@@ -100,13 +100,13 @@ bash scripts/run.sh ./e2e/specs --base-url ...              # 跑用例
 
 ## Troubleshooting
 
-格式：**症状 → 原因 → 一线修复 → 仍失败兜底**。先看诊断再猜——框架的失败信息里已自带选择器诊断。
+格式：**症状 → 原因 → 一线修复 → 仍失败兜底**。先看诊断再猜。框架的失败信息里已自带选择器诊断。
 
 | Symptom | Cause | Fix（一线修复） | 仍失败兜底 |
 |---|---|---|---|
 | `502 Bad Gateway` / `Connection refused` on connect | server died or not started | restart as persistent bg process; probe `/json/version` first | 确认 9222 未被占用（`lsof -i :9222`）；换端口后传 `run.sh --endpoint http://127.0.0.1:<port>` |
 | `ERR_MODULE_NOT_FOUND: playwright` | script outside `node_modules` tree; ESM ignores `NODE_PATH` | move script into the dir containing `node_modules`, or import by absolute path | 直接用 `scripts/run.sh` 跑（它自行处理 ESM 解析）；或先在该目录 `npm install playwright` 再按绝对路径 import |
-| `This does not look like a DevTools server` | endpoint not up, or wrong path | verify `/json/version` returns `webSocketDebuggerUrl` | 确认没把 `moli fetch` 的 HTTP 端口当成 CDP 端口——两者是不同的端口 |
+| `This does not look like a DevTools server` | endpoint not up, or wrong path | verify `/json/version` returns `webSocketDebuggerUrl` | 确认没把 `moli fetch` 的 HTTP 端口当成 CDP 端口，两者是不同的端口 |
 | Click hits wrong element / no geometry | layout disabled | restart with `moli serve --layout` | 已带 `--layout` 仍打偏 → 目标是浮层元素，改 `ov.*` DOM 级交互 |
 | Screenshot looks wrong or empty | rendering is on-demand only | `--layout` required for screenshots/PDF | 仍全白 → 页面是 `about:blank`（忘了 goto）或渲染确实为空，查前后端；**排障时先测量再截图**（截图会重建冻结树，把过期布局「修好」，掩盖原问题） |
 | Action silently no-ops | unsupported CDP domain or Canvas/WebGL dependency | treat as unsupported; use Chromium | 已到能力边界：改用真实 Chromium，不要继续在此调参 |
@@ -121,7 +121,7 @@ bash scripts/run.sh ./e2e/specs --base-url ...              # 跑用例
 | 浏览器突然导航/请求超时，但服务 curl 都正常 | 共享 CDP 浏览器攒了残留 page（探针只 `browser.close()` 不关 page） | `curl -s :9222/json/list` 数 targets，逐个 `/json/close/<id>` 清理；探针脚本收尾必须 `page.close()` | 仍不稳 → 重启 `moli serve`；长跑前先清一轮 targets |
 | 首轮大面积失败，分不清功能缺陷还是用例问题 | 用例假设（选择器/交互）未经真实验证 | **探针先行**：先用最小裸 Playwright 脚本逐个验证交互原语，再全量编排 spec | 仍分不清 → 先跑 `scripts/self-test.spec.mjs` 排除环境问题 |
 | 某用例断言全「元素不存在」，`page.url()` 是 `about:blank` | 忘了 goto：每例都是新页面，页面状态不继承 | 用例开头补 `await t.human.goto('/路径')`；框架已加守卫，失败信息会直接提示 | 检查 `--base-url` 是否漏传；或 `run.sh --endpoint` 指错 |
-| 失败信息只写「等不到 X」，不知是没渲染还是被隐藏 | ——（已改进：错误信息自动附选择器诊断） | 读附带的诊断行：`匹配 0 个元素`＝不在 DOM；`最近隐藏原因: xxx 的 display:none`＝被祖先隐藏；`可见候选的实际文本: [...]`＝文案不符 | 手工调用 `diagnoseSelector(page, sel, { text })`（由 overlay-helpers.mjs re-export） |
+| 失败信息只写「等不到 X」，不知是没渲染还是被隐藏 | （已改进：错误信息自动附选择器诊断） | 读附带的诊断行：`匹配 0 个元素`＝不在 DOM；`最近隐藏原因: xxx 的 display:none`＝被祖先隐藏；`可见候选的实际文本: [...]`＝文案不符 | 手工调用 `diagnoseSelector(page, sel, { text })`（由 overlay-helpers.mjs re-export） |
 | 失败截图整张全白 | 页面还是 about:blank 就截图（渲染为空） | 已改为**空白页不产截图**；若仍看到白图，说明页面渲染确实为空，查前后端加载 | 仍白 → 该用例大概率没 goto，或接口没返回数据 |
 | `ov.*` 报「sel 只接受纯 CSS 选择器」 | 传了 `text=xxx` / `:has-text()` / `:visible` 等 Playwright 私有语法 | 按报错里的改法：sel 只写纯 CSS，文本作为第二个参数传入 | 见 `scripts/overlay-helpers.mjs` 文件头的「约定」段 |
 

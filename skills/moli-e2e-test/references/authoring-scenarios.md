@@ -51,7 +51,7 @@
 
 ## 5. 生成 spec 文件
 
-放在被测项目里（如 `e2e/`），**只写用例、不写框架**——框架从 skill 引入：
+放在被测项目里（如 `e2e/`），**只写用例、不写框架**。框架从 skill 引入：
 
 ```js
 export default function register(session) {
@@ -110,4 +110,4 @@ bash <skill目录>/scripts/run.sh ./e2e/specs/crm-customer.spec.mjs --base-url h
 - [ ] 有「非法提交不产生副作用」的拦截用例（URL/列表无变化）
 - [ ] 关键写操作有成功提示或列表/路由变化的断言
 
-> 与 design.md 对齐：用例断言的状态与反馈（提示文案、抽屉/弹窗、加载态）应与设计规范一致，不一致即为缺陷。
+> 对照 design.md：用例断言的状态与反馈（提示文案、抽屉/弹窗、加载态）应与设计规范一致，不一致即为缺陷。

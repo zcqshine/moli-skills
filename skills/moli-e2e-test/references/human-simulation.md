@@ -1,6 +1,6 @@
 # 拟人操作（Human Simulation）
 
-为什么拟人：真实前端对「快速程序化输入」不友好——防抖/节流、`input`/`change`/`compositionend`
+为什么拟人：真实前端对「快速程序化输入」不友好：防抖/节流、`input`/`change`/`compositionend`
 事件、受控组件状态、鼠标悬停才展开的菜单、滚动懒加载，都会让「瞬间填完再点」的脚本产生假阳性/假阴性。
 拟人操作让测试更接近真人，暴露的问题也更真实。
 
@@ -52,8 +52,8 @@ await t.human.click('.el-table__row:has-text("示例客户") .btn-edit');
 **拟人操作的适用边界（实测）**：`human.click` 依赖坐标 hit-test，只在「页内固定布局区」
 （表单、工具栏、视口内的普通按钮/链接）可靠。两类场景会静默打偏，必须改 DOM 级：
 
-- **浮层内部**（dialog/drawer/message-box 的按钮、选项）——0×0，坐标即 (0,0)；
-- **横向滚动的表格区**（列多到出滚动条的操作列）——scrollIntoView 后坐标过期，
+- **浮层内部**（dialog/drawer/message-box 的按钮、选项）：0×0，坐标即 (0,0)；
+- **横向滚动的表格区**（列多到出滚动条的操作列）：scrollIntoView 后坐标过期，
   实测会点到分页等覆盖元素（hit-test intercept）。用 `ov.rowClick` / `ov.domClick`。
 
 ## 反模式（不要这么做）

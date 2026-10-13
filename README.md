@@ -1,9 +1,9 @@
 # moli-skills
 
-> Agent skills for [Moli](https://github.com/lexmount/moli) — a lightweight Rust headless browser. Fetch, search, and run real end-to-end web tests with a fraction of Chrome's memory.
+> Agent skills for [Moli](https://github.com/lexmount/moli), a lightweight Rust headless browser: fetch, search, and run real end-to-end web tests with a fraction of Chrome's memory.
 
-四个围绕 **Moli 无头浏览器** 的 Agent Skill：抓取、搜索、CDP 服务、以及**网页 E2E 自动化测试**。
-每个 skill 都是标准 `SKILL.md` 格式，能被任何支持 skill 的 Agent 框架（Codex / Claude Code / OpenCode / WorkBuddy 等）直接加载。
+四个围绕 **Moli 无头浏览器** 的 Agent Skill：抓取、搜索、CDP 服务和**网页 E2E 自动化测试**。
+每个 skill 都是标准 `SKILL.md` 格式。任何支持 skill 的 Agent 框架（Codex / Claude Code / OpenCode / WorkBuddy 等）都能直接加载。
 
 ---
 
@@ -17,13 +17,14 @@
 - [安装 Skill 到你的 Agent](#安装-skill-到你的-agent)
 - [实测数据](#实测数据)
 - [已知坑](#已知坑)
+- [维护：四副本同步](#维护四副本同步)
 - [许可与来源](#许可与来源)
 
 ---
 
 ## 为什么用 Moli
 
-Moli 不是 Chromium 的套壳，而是自研的浏览器引擎（嵌入 V8 + CSS 层叠 + Fetch/WebSocket + 存储）。
+Moli 是自研的浏览器引擎，内嵌 V8、CSS 层叠、Fetch/WebSocket 和存储，不套用 Chromium。
 核心设计是 **结构优先、按需渲染**：默认不布局不绘制，直接读运行时里的 DOM 与样式状态；
 只有显式加 `--layout` 才计算 layout 并软件光栅化出 PNG / PDF。
 
@@ -37,7 +38,9 @@ Moli 不是 Chromium 的套壳，而是自研的浏览器引擎（嵌入 V8 + CS
 一个数量级的差距。2GB 的小 VPS 上 Chrome 会被 OOM killer 随机干掉，Moli 能稳定跑。
 对 CI 小机器、批量抓取、Agent 评测环境都很友好。
 
-> Moli 替代的是**浏览器引擎**，不是**测试框架**。Playwright / Puppeteer 照常用，只是把 Chromium 换成 Moli 的 CDP 端点。
+> Moli 替换的是浏览器引擎这一层。测试框架照用 Playwright / Puppeteer，只把 Chromium 换成 Moli 的 CDP 端点。
+
+---
 
 ## Skill 一览
 
@@ -75,22 +78,22 @@ source ~/.zshrc
 
 ```bash
 moli --version
-# moli 1.1.5
+# moli 1.1.16
 ```
 
-跑一条真实抓取验证链路可用：
+跑一次真实抓取，确认能正常工作：
 
 ```bash
 moli fetch --dump markdown --wait-until done "https://example.com"
 ```
 
-### 生产环境建议锁版本
+### 生产环境锁版本
 
 installer 永远拉 `latest`，重建时可能静默换引擎。要可复现就固定 tarball：
 
 ```bash
-# 以 v1.1.5 / Apple Silicon 为例
-curl -LO https://github.com/lexmount/moli/releases/download/v1.1.5/moli-aarch64-apple-darwin.tar.gz
+# 以 v1.1.16 / Apple Silicon 为例
+curl -LO https://github.com/lexmount/moli/releases/download/v1.1.16/moli-aarch64-apple-darwin.tar.gz
 tar -xzf moli-aarch64-apple-darwin.tar.gz -C ~/.local/bin/
 chmod +x ~/.local/bin/moli
 ```
@@ -99,7 +102,7 @@ chmod +x ~/.local/bin/moli
 
 ### 让服务常驻（可选，macOS 用 launchd）
 
-`moli serve` 需要长驻。临时用 `nohup`；要开机自启+崩溃自拉，写一个 LaunchAgent：
+`moli serve` 需要长驻。临时用 `nohup`；要开机自启 + 崩溃自拉，写一个 LaunchAgent：
 
 ```xml
 <!-- ~/Library/LaunchAgents/com.example.moli.plist -->
@@ -140,7 +143,7 @@ launchctl unload ~/Library/LaunchAgents/com.example.moli.plist  # 停用
 Agent 直接 `exec` 一行，跑完即退，无需任何服务：
 
 ```bash
-# 正文转 Markdown（结构优先，不渲染——文本任务永远别加 --layout）
+# 正文转 Markdown（结构优先，不渲染；文本任务永远别加 --layout）
 moli fetch --dump markdown --wait-until done "https://example.com"
 
 # 动态页：等网络静默 / DOM 稳定
@@ -167,7 +170,7 @@ moli serve            # 纯 DOM/JS 工作负载，监听 127.0.0.1:9222
 moli serve --layout   # 需要真实坐标、截图、PDF、screencast 时加
 ```
 
-Playwright 直接连上去——**不启动第二个浏览器，没有 ChromeDriver**：
+Playwright 直接连上去。不启动第二个浏览器，也没有 ChromeDriver：
 
 ```js
 import { chromium } from "playwright";
@@ -190,9 +193,9 @@ await browser.close();
 
 ## 快速开始：跑一次网页 E2E 测试
 
-`moli-e2e-test` 自带一键运行器，会自动：解析 Node≥20 → 确保 Moli CDP 服务在跑 → 按需装 playwright（跳过浏览器下载）→ 跑用例 → 出 HTML 报告 → 以退出码反映失败。
+`moli-e2e-test` 自带一键运行器。跑之前它会解析 Node≥20、确保 Moli CDP 服务在跑、按需装 playwright（跳过浏览器下载）。跑完出 HTML 报告，并以退出码反映失败。
 
-> **目录约定**：所有 e2e 产物统一收在**被测项目根**的 `e2e/` 下——`specs/` 用例、`reports/` 报告、`screenshots/` 截图，不在项目根散落。
+> **目录约定**：所有 e2e 产物统一收在被测项目根的 `e2e/` 下，即 `specs/` 用例、`reports/` 报告、`screenshots/` 截图，不在项目根散落。
 
 ### 1. 在被测项目根建骨架
 
@@ -207,7 +210,7 @@ bash skills/moli-e2e-test/scripts/run.sh init
 bash skills/moli-e2e-test/scripts/run.sh skills/moli-e2e-test/scripts/self-test.spec.mjs
 ```
 
-输出 13 条用例结果（8 条表单功能/边界 + 5 条框架自诊断能力回归），报告落在当前目录的 `e2e/reports/report.html`。
+输出 14 条用例结果（8 条表单功能/边界 + 6 条框架自诊断能力回归），报告落在当前目录的 `e2e/reports/report.html`。
 
 ### 3. 跑你自己模块的用例
 
@@ -234,7 +237,7 @@ export default function register(session) {
 }
 ```
 
-> **每个用例开头都要自己 `t.human.goto(...)`**：harness 在每例内部 `context.newPage()`——
+> **每个用例开头都要自己 `t.human.goto(...)`**：harness 在每例内部 `context.newPage()`，
 > 登录态经 context 共享，但**页面不继承**。忘了 goto 会表现为「所有断言都找不到元素」，
 > 框架会直接把 `about:blank` 根因写进失败信息，并且不再产出误导性的全白截图。
 
@@ -248,11 +251,11 @@ bash skills/moli-e2e-test/scripts/run.sh ./e2e/specs --base-url http://localhost
 
 `t` 提供的能力：
 
-- `t.human` — `goto` / `type` / `click` / `hover` / `select` / `check` / `uncheck` / `clear` / `press` / `scroll`，拟人化（逐字输入、鼠标轨迹、滚动渐进）
-- `t.expect` — `visible` / `hidden` / `text` / `contains` / `value` / `count` / `url` / `fieldError` / `noFieldError` / `toast` / `blocked` / `ok`（断言内部轮询到超时）
-- `t.step` / `t.log` — 分步与日志
-- `t.page` — 裸 Playwright 页面对象，能力不够时直接下钻
-- `t.isShown` — 布局无关的可见性判定（见[已知坑](#已知坑)）
+- `t.human`：`goto` / `type` / `click` / `hover` / `select` / `check` / `uncheck` / `clear` / `press` / `scroll`，拟人化（逐字输入、鼠标轨迹、滚动渐进）
+- `t.expect`：`visible` / `hidden` / `text` / `contains` / `value` / `count` / `url` / `fieldError` / `noFieldError` / `toast` / `blocked` / `ok`（断言内部轮询到超时）
+- `t.step` / `t.log`：分步与日志
+- `t.page`：裸 Playwright 页面对象，能力不够时直接下钻
+- `t.isShown`：布局无关的可见性判定（见[已知坑](#已知坑)）
 
 失败信息**自带选择器诊断**：断言/等待失败时会直接给出「当前 URL + 匹配几个元素 + 是根本不在
 DOM / 被哪个祖先以什么方式隐藏 / 可见候选的实际文本」，不需要再手工 dump。诊断实现是
@@ -276,30 +279,32 @@ cp -R skills/* ~/.workbuddy/skills/
 ```
 
 前三个上游 skill（`moli-webfetch` / `moli-websearch` / `moli-cdp-server`）附带
-`skills/*/agents/openai.yaml`（给 OpenAI Codex 的 agent 定义）；自研的 `moli-e2e-test`
-不含该文件。其它框架忽略即可。
+`skills/*/agents/openai.yaml`，给 OpenAI Codex 用。自研的 `moli-e2e-test` 不含该文件，
+其它框架忽略即可。
 
 ---
 
 ## 实测数据
 
-`moli-e2e-test` 内置自检（13 条用例：8 条表单功能/边界 —— 空表单拦截、邮箱格式、手机号格式、
-密码过短、用户名长度边界、修正后错误消失、特殊字符与超长、XSS 不注入；5 条框架自诊断能力回归
-—— 私有伪类前置拦截、超时附诊断、隐藏原因定位、文本候选列出、空白页守卫）：
+`moli-e2e-test` 内置自检，共 14 条用例。
+8 条表单功能与边界：空表单拦截、邮箱格式、手机号格式、密码过短、用户名长度边界、
+修正后错误消失、特殊字符与超长、XSS 不注入。
+6 条框架自诊断能力回归：私有伪类前置拦截、超时附诊断、隐藏原因定位、文本候选列出、
+expect 超时附诊断、冻结树过期（包围盒 0×0）：
 
 ```
 ▶ 用户注册表单 · 功能与边界 › 空表单提交：应被前端拦截并提示全部必填项
   ✅ PASS  (1234ms)
 ▶ 用户注册表单 · 功能与边界 › 邮箱格式非法：应被拦截并提示格式错误
   ✅ PASS  (5175ms)
-  ...（其余 11 条同样 PASS）
+  （其余 12 条同样 PASS）
 ══════ 汇总 ══════
-用例 13 · 通过 13 · 失败 0 · 跳过 0 · 耗时 36.7s
+用例 14 · 通过 14 · 失败 0 · 跳过 0 · 耗时 38.4s
 报告: <项目>/e2e/reports/report.html
 ```
 
 `moli serve --layout` + Playwright `connectOverCDP` 全绿。跑完直接打开
-`e2e/reports/report.html` —— 汇总卡 + 每个用例明细（失败时含选择器诊断、页面 URL、失败截图；
+`e2e/reports/report.html`：汇总卡 + 每个用例明细（失败时含选择器诊断、页面 URL、失败截图；
 报告自包含 base64，可归档分享）。
 
 ---
@@ -324,17 +329,18 @@ cp -R skills/* ~/.workbuddy/skills/
 
 ---
 
-## 维护：三副本同步
+## 维护：四副本同步
 
-作者开发机上同时存在三份 skill 副本，**改代码只改源目录，改完一起同步**，否则会静默漂移（各份跑不同版本，且不易察觉）：
+作者开发机上同时存在四份 skill 副本，**改代码只改源目录，改完一起同步**，否则会静默漂移（各份跑不同版本，且不易察觉）：
 
 | # | 位置 | `agent_created` | 角色 |
 |---|---|---|---|
 | 1 | `~/.workbuddy/skills/<skill>` | 保留 | **唯一真源**，改代码只改这里 |
 | 2 | `~/.agents/skills/<skill>` | 保留 | agents 分发副本 |
-| 3 | `<本仓库>/skills/<skill>` | 去掉 | 对外分发副本（即你在仓库里看到的这一份） |
+| 3 | `~/.cc-switch/skills/<skill>` | 保留 | `~/.claude/skills/` 软链指向这一份 |
+| 4 | `<本仓库>/skills/<skill>` | 去掉 | 对外分发副本（即你在仓库里看到的这一份） |
 
-同步由维护者本地的 `sync-moli-skills` 脚本完成（`rsync` 同步内容 + `SKILL.md` 按「去掉 `agent_created` 后的正文」单独比对 + 同步后校验全量内容/正文/标记状态/`run.sh` 执行位）。该脚本属个人开发机工具，**不在本仓库内**。
+同步由仓库内的 `scripts/sync-moli-skills.sh` 完成。它用 `rsync` 同步内容，`SKILL.md` 按「去掉 `agent_created` 后的正文」单独比对。同步后校验全量内容、正文、标记状态和 `run.sh` 执行位。加 `--check` 可校验 agents、cc-switch、mirror 三条路径。
 
 > 因此本仓库的 `skills/<skill>/` 是**自动生成的镜像**：直接改这里的文件，会被下一次同步覆盖。要改 skill，请在 issue / PR 里说明意图，或改源目录后同步。
 
