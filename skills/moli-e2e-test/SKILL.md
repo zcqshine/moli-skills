@@ -215,9 +215,10 @@ moli-e2e-test/
   全是 0×0**——根因即上面的冻结树机制：浮层是 DOM 变更后新出现的元素，不在布局快照里。
   坐标点击、`:visible` 伪类、hit-test 全部失效，拟人点击会打偏到 (0,0) 或别的元素。
   **一律用 DOM 级交互**：直接 `import * as ov from '<skill目录>/scripts/overlay-helpers.mjs'`
-  （domClick / rowClick / domType / buttonDisabled / expectToast / hoverDropdown）。
+  （domClick / rowClick / domType / buttonDisabled / expectToast / hoverDropdown /
+  waitForShown / waitForGone / shownCount）。
   hover 型 el-dropdown 打开须 `ov.hoverDropdown`（mouseenter 打在 `.el-tooltip__trigger` 上）。
-  同文件的「Overlay 实战手册」小节有完整范例。
+  完整范例见 [references/ui-selectors.md](references/ui-selectors.md) 的「Overlay 实战手册」小节。
 - **`:has-text()` / `:text()` / `:visible` 是 Playwright 私有伪类**：只能用于 locator；
   传进 `page.evaluate` 里的 `querySelectorAll` 会抛 `DOMException`。evaluate 场景用纯 CSS +
   单独的文本过滤参数。`ov.*` 已做**前置拦截**：误用时立刻抛出带改法的错误
