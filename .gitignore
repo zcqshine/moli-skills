@@ -15,3 +15,8 @@ skills/moli-e2e-test/e2e/screenshots/*
 
 # 本地维护脚本（仅存在于作者开发机，不随仓库分发）
 scripts/
+
+# darwin-skill 优化过程产物（本地评估用，不分发）
+skills/moli-e2e-test/test-prompts.json
+skills/moli-e2e-test/results.tsv
+
