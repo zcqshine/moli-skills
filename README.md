@@ -332,36 +332,6 @@ expect 超时附诊断、冻结树过期（包围盒 0×0）：
 
 ---
 
-## 维护：仓库为唯一真源
-
-本仓库的 `skills/<skill>/` 就是**唯一真源**：改代码只改这里，装到各 runtime 的副本由一条命令铺开，不再手工 `cp`：
-
-| # | 位置 | 形态 | `agent_created` | 角色 |
-|---|---|---|---|---|
-| 1 | `<本仓库>/skills/<skill>` | 目录 | 不带 | **唯一真源**，改代码只改这里 |
-| 2 | `~/.agents/skills/<skill>` | 目录 | 带 | 通用 agent 目录 |
-| 3 | `~/.cc-switch/skills/<skill>` | 目录 | 带 | **运行本体**；下面两个入口软链到这一份 |
-| 4 | `~/.workbuddy/skills/<skill>` | **软链** → 3 | 随 3 | WorkBuddy |
-| 5 | `~/.claude/skills/<skill>` | **软链** → 3 | 随 3 | Claude Code |
-
-方向固定为「真源 → 副本」单向。真源永远不带 `agent_created`（对外分发用），两份实体副本同步时自动补上。
-
-```bash
-bash scripts/sync-moli-skills.sh               # 同步真源 skills/ 下全部 skill
-bash scripts/sync-moli-skills.sh moli-webfetch # 只同步指定 skill（可传多个）
-bash scripts/sync-moli-skills.sh --check       # 只报漂移，不改动（有漂移则退出码 1）
-bash scripts/sync-moli-skills.sh --dry-run     # 预览将要同步 / 重建的内容
-bash scripts/sync-moli-skills.sh --git         # 同步后对真源仓库 commit + push
-```
-
-脚本用 `rsync --delete` 分发（排除 `node_modules` / `e2e` / 日志等运行产物），`SKILL.md` 按「去掉 `agent_created` 后的正文」单独比对，正文没变就不重写目标文件；同步后校验全量内容、正文、标记状态、`run.sh` 执行位，以及两个 runtime 软链的指向。
-
-首次把旧的实体副本换成软链时会先做安全检查：目标目录里若有真源没有的文件、或 `SKILL.md` 正文与真源不一致，只报错不动手，提示先把改动合回真源。
-
-> 脚本位于 `<本仓库>/scripts/sync-moli-skills.sh`，被 `.gitignore` 排除（`scripts/`），属维护者开发机工具，不随仓库分发。
-> 因此在本仓库 `skills/` 下改的东西就是最终会跑的东西——不存在「改了被下一次同步覆盖」的副本。
-
----
 
 ## 许可与来源
 
